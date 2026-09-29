@@ -308,6 +308,32 @@ active tools, so the semantic agent knows the semantic tools exist. That is the
 treatment, not a leak — withholding it would be testing a hidden feature rather than an
 available one.
 
+
+### 9.5 A timeout is a failure *and* an unbounded cost, and averaging it in flips the answer
+
+This is the one methodological error in the harness that changed a conclusion, so it is
+recorded rather than quietly corrected.
+
+The first scorer averaged input tokens over every run. But a run that hits the wall-clock
+cap keeps spending tokens until it is killed — it is a failure *and* an unbounded cost,
+and folding it into a mean measures "what a broken run costs before it gives up" rather
+than "what a run costs". On the fast-build sweep that was enough to reverse the sign of
+the result: the all-runs mean said the semantic condition was about a quarter cheaper,
+and the median said it was *dearer*. The mean was being dragged by the timeout runs, and
+the timeout runs were concentrated in the baseline arm.
+
+`score.ts` now reports both: the all-runs statistics and the finished-only statistics,
+side by side, with the count of runs that reached a terminal state. Neither can quietly
+do the work on its own.
+
+The general lesson is the one the report itself states about context reduction — a
+number that only means something next to the other axis. Here the other axis is *what
+kind of run produced it*. "The semantic condition used fewer tokens" is not a claim
+until you know whether the baseline's extra tokens were productive work or an agent
+looping until it was killed.
+
+---
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
