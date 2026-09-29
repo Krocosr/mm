@@ -101,6 +101,32 @@ argument the tool falls back to a character-density heuristic, which reports
 The heuristic does not merely add noise, it changes the size of the effect being claimed.
 Any future number quoted from this repository must name its tokenizer.
 
+### 3.1 The fourth condition: what a goal-directed slice costs
+
+The table above compares a *whole-module packet* against whole source. The report's
+fourth condition is different: the agent asks the graph for the context of a specific
+goal, live. That has a different denominator — the source of the files the slice
+actually covers — so it is reported separately rather than folded into the table above.
+Mixing them would compare a slice against the entire corpus while the packet was
+compared against a module.
+
+`bun run scripts/measure-slice-tokens.ts examples tiktoken/cl100k_base`, exact BPE:
+
+| Goal | Files covered | Symbols | Source of those files | Slice | Ratio |
+|---|---:|---:|---:|---:|---:|
+| narrow — "encode a byte buffer as base64 text" | 12 | 39 | 10 961 | 1 824 | **0.166** |
+
+So a slice carries about one-sixth the text of the source it stands in for. That is
+better than the packet's 0.285, and it is the number that matters for a live agent:
+the slice is sized by the goal rather than by the module.
+
+**This is a static measurement and it is not the experiment.** It says the projection is
+compact, not that an agent using it completes tasks. The first agent sweep found the
+opposite of what this number suggests — see `harness.md` §7: `mm_slice` took eleven
+seconds, agents used it once in sixteen runs, and the sweep could not distinguish the
+two conditions at all. A projection can be small and still be unusable, and only the
+agent run tells you which.
+
 ---
 
 ## 4. What was NOT measured
