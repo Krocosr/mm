@@ -73,6 +73,39 @@ export class BodyChecker {
     }
   }
 
+  /**
+   * Type-check `test` bodies.
+   *
+   * These were skipped entirely, which meant every assertion in every example was
+   * invisible to the compiler: an undefined name inside a test body, or a `let` binding a
+   * string to an integer, both checked clean. That is not a small gap. It hid the
+   * pure-builtin bug for the whole project, because every `assert_eq` in the corpus lives
+   * inside a test block — the examples looked clean precisely because the calls that
+   * would have shown the problem were the ones never checked.
+   */
+  checkAllTests(): void {
+    for (const t of this.c.program.tests.values()) {
+      if (t.body.stmts.length === 0 && !t.body.tail) continue;
+      const c = this.c;
+      c.currentFn = t.id;
+      c.subst.clear();
+      this.intLiterals = [];
+      this.floatLiterals = [];
+      this.generics = genericScope(c, []);
+      // One frame, not two: a test has no parameter frame, but it does need the module's
+      // own consts and types, which live in the scope `checkDeclarations` seeded.
+      c.scope.push();
+      this.checkBlock(t.body, TY_UNIT);
+      for (const v of this.intLiterals) {
+        if (v.k === "var" && v.bound === null) v.bound = { k: "prim", name: "i64" };
+      }
+      for (const v of this.floatLiterals) {
+        if (v.k === "var" && v.bound === null) v.bound = { k: "prim", name: "f64" };
+      }
+      c.scope.pop();
+    }
+  }
+
   private checkFn(info: FnInfo): void {
     const c = this.c;
     c.currentFn = info.id;
@@ -733,16 +766,35 @@ export class BodyChecker {
       const want = i < params.length ? deepResolve(params[i]!) : undefined;
       const got = this.checkExpr(a, want);
       argTys.push(got);
-      if (want) {
-        const m = unify(want, got, c.subst);
-        if (m) {
+      if (!want) return;
+      // A `view` / `view mut` parameter is satisfied by naming a place, not by handing
+      // over an owned value of the right type. The interpreter has always done this:
+      // `argFor` turns the argument into a borrow over the caller's place, so `peek(s)`
+      // binds a view of `s` and `insert(s, 11)` mutates through it. Requiring an explicit
+      // borrow here made the checker reject 198 call sites in the corpus that the
+      // interpreter runs — and the corpus looked clean only because its assertions live
+      // in test bodies, which were not being checked at all.
+      if (isViewParam(want) && got.k !== "own") {
+        // Lend the place: compare the borrowed type against the argument's own.
+        const lent = unify(want.inner, deepResolve(deepUnown(got)), c.subst);
+        if (lent) {
           c.error(
             "E0205", "argument_type",
-            `argument ${i + 1} of \`${name}\`: ${m.reason}`,
+            `argument ${i + 1} of \`${name}\`: expected a ${want.ownership} of \`${renderish(want.inner)}\`, found \`${renderish(got)}\``,
             a.span,
-            { data: { expected: m.expected, actual: m.actual } },
+            { data: { expected: want, actual: got } },
           );
         }
+        return;
+      }
+      const m = unify(want, got, c.subst);
+      if (m) {
+        c.error(
+          "E0205", "argument_type",
+          `argument ${i + 1} of \`${name}\`: ${m.reason}`,
+          a.span,
+          { data: { expected: m.expected, actual: m.actual } },
+        );
       }
     });
     this.facts.calls.set(factKey(expr.span), { callee: fnId, span: expr.span, argTys });
@@ -1509,4 +1561,14 @@ function typeMatchesNominal(c: Checker, base: Ty, typeName: string): boolean {
   if (def === null) return false;
   if (base.k !== "named") return false;
   return base.def === def;
+}
+
+/**
+ * True for a parameter that wants a borrow.
+ *
+ * Narrowing matters: the call path reaches `want.inner` and `want.ownership` on the
+ * strength of this, and `Ty` is a union, so a plain boolean would leave both untyped.
+ */
+function isViewParam(t: Ty): t is Extract<Ty, { k: "own" }> {
+  return t.k === "own" && (t.ownership === "view" || t.ownership === "viewmut");
 }

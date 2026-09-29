@@ -90,6 +90,7 @@ function runPasses(program: Program): { system: SystemPlan | null } {
   if (!signatureFailed) {
     bodyChecker = new BodyChecker(checker);
     bodyChecker.checkAllFns();
+    bodyChecker.checkAllTests();
     for (const [k, v] of bodyChecker.facts.types) facts.types.set(k, v);
     for (const [k, v] of bodyChecker.facts.calls) facts.calls.set(k, v);
     for (const [k, v] of bodyChecker.facts.constructions) facts.constructions.set(k, v);

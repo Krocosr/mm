@@ -60,6 +60,7 @@ export function loadPath(target: string): Program {
   const facts = { types: new Map(), calls: new Map(), constructions: new Map(), views: new Map() };
   const bodyChecker = new BodyChecker(checker);
   bodyChecker.checkAllFns();
+  bodyChecker.checkAllTests();
   for (const [k, v] of bodyChecker.facts.types) facts.types.set(k, v);
   for (const [k, v] of bodyChecker.facts.calls) facts.calls.set(k, v);
   for (const [k, v] of bodyChecker.facts.constructions) facts.constructions.set(k, v);
