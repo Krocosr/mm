@@ -1,0 +1,6 @@
+{
+  "id": "checkdigit",
+  "prompt_file": "prompt.txt",
+  "hidden_test": "checkdigit_test.mm",
+  "description": "A mod-10 check digit routine whose doubling pass alternates from the leftmost digit instead of following the parity of the string's length, so odd-length numbers total wrongly and even-length payloads get the wrong check digit."
+}

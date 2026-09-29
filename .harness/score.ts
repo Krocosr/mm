@@ -30,8 +30,21 @@ const DEFAULT_TIMEOUT = 120;
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 export interface ResultRecord extends GradableRun {
+
+  /**
+   * Why a run did not pass. `no_tests_ran` is deliberately distinct from a failure:
+   * a run that executed zero hidden tests has not demonstrated anything, and folding
+   * it into either bucket is how a broken fixture turns into a clean pass rate.
+   */
+  failure_kind?:
+    | "run_did_not_finish"
+    | "work_dir_missing"
+    | "no_hidden_tests"
+    | "no_tests_ran"
+    | "hidden_tests_failed";
+  /** The hidden test files this run was graded against, recorded for auditability. */
+  hidden_tests: string[];
   task: string;
   condition: string;
   repeat: number;
@@ -39,6 +52,15 @@ export interface ResultRecord extends GradableRun {
   input_tokens: number;
   output_tokens: number;
   tool_calls: number;
+  /**
+   * How many `mm_*` tools this run actually invoked, summed across the run.
+   *
+   * A semantic run that never calls an `mm_*` tool is not a semantic measurement: it
+   * measured the baseline, and its token count says nothing about the semantic
+   * interface. This number is what makes that failure visible instead of invisible.
+   */
+  mm_tool_calls: number;
+  tool_calls_by_name: Record<string, number>;
   seconds: number;
   status: string;
   tools: string;
@@ -85,10 +107,8 @@ export function parseTestResults(stdout: string): { module: string; name: string
  */
 export function verdict(
   results: readonly { module: string; passed: boolean }[],
-  hiddenModules: readonly string[],
 ): { passed: boolean; total: number; failed: number; reason?: string } {
-  const hidden = new Set(hiddenModules);
-  const mine = results.filter((r) => hidden.has(r.module));
+  const mine = results.filter((r) => isHiddenModule(r.module));
   const failed = mine.filter((r) => !r.passed).length;
   if (mine.length === 0) {
     return { passed: false, total: 0, failed: 0, reason: "no hidden tests were reported" };
@@ -99,9 +119,18 @@ export function verdict(
   return { passed: true, total: mine.length, failed: 0 };
 }
 
-/** The module ids a task's hidden tests will be loaded under, given where they land. */
-function hiddenModulesFor(files: readonly string[]): string[] {
-  return files.map((f) => `hidden/${f.replace(/\.mm$/, "")}`.split("/").join("::"));
+/**
+ * The module prefix every hidden test is loaded under.
+ *
+ * The hidden tests are copied into `<work>/hidden/`, so `mm run <work>` names them
+ * `hidden::<file>::<test>`. Parsing splits a result line at the FIRST `::`, which
+ * yields the module `hidden` — so the filter is on that leading component, not on the
+ * whole qualified name.
+ */
+const HIDDEN_MODULE_PREFIX = "hidden";
+
+function isHiddenModule(module: string): boolean {
+  return module === HIDDEN_MODULE_PREFIX || module.startsWith(`${HIDDEN_MODULE_PREFIX}::`);
 }
 
 async function listHidden(hiddenDir: string): Promise<string[]> {
@@ -127,26 +156,36 @@ async function gradeRun(opts: {
     input_tokens: run.input_tokens,
     output_tokens: run.output_tokens,
     tool_calls: run.tool_calls,
+    tool_calls_by_name: run.tool_calls_by_name ?? {},
+    mm_tool_calls: Object.entries(run.tool_calls_by_name ?? {})
+      .filter(([name]) => name.startsWith("mm_"))
+      .reduce((n, [, count]) => n + count, 0),
     seconds: run.seconds,
     status: run.status,
     tools: run.tools,
     extension: run.extension,
     tests_total: 0,
     tests_failed: 0,
+    hidden_tests: [],
   };
 
   // A run that never finished has no work dir worth grading: the timeout is the result.
   if (!run.ok) {
-    return { ...base, failure_reason: `run did not finish (${run.status})` };
+    return { ...base, failure_kind: "run_did_not_finish", failure_reason: `run did not finish (${run.status})` };
   }
   if (!existsSync(run.work_dir)) {
-    return { ...base, failure_reason: `work dir missing: ${run.work_dir}` };
+    return { ...base, failure_kind: "work_dir_missing", failure_reason: `work dir missing: ${run.work_dir}` };
   }
 
   const hiddenDir = join(tasksDir, run.task, "hidden");
   const files = await listHidden(hiddenDir);
   if (files.length === 0) {
-    return { ...base, failure_reason: `no hidden tests for task ${run.task}` };
+    // Loud and distinct: a task graded against no tests has measured nothing at all.
+    return {
+      ...base,
+      failure_kind: "no_hidden_tests",
+      failure_reason: `task ${run.task} has no hidden tests under ${hiddenDir}`,
+    };
   }
 
   // Copy the hidden tests in AFTER the agent is done, so the agent could never have
@@ -172,16 +211,19 @@ async function gradeRun(opts: {
   const [stdout, stderr] = await Promise.all([stdoutP, stderrP]);
 
   const results = parseTestResults(stdout);
-  const v = verdict(results, hiddenModulesFor(files));
+  const v = verdict(results);
   const out: ResultRecord = {
     ...base,
     passed: v.passed,
     tests_total: v.total,
     tests_failed: v.failed,
+    // Recorded so a graded run can always be traced back to the files that graded it.
+    hidden_tests: files,
   };
   if (!v.passed) {
     const detail = v.reason ?? `exit ${exitCode}`;
-    const firstFail = results.find((r) => r.module.startsWith("hidden") && !r.passed);
+    const firstFail = results.find((r) => isHiddenModule(r.module) && !r.passed);
+    out.failure_kind = v.total === 0 ? "no_tests_ran" : "hidden_tests_failed";
     out.failure_reason = firstFail
       ? `${detail}: ${firstFail.module}::${firstFail.name}`
       : stderr.trim() !== "" ? `${detail}: ${stderr.trim().split("\n")[0]!.slice(0, 200)}` : detail;
@@ -279,22 +321,62 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 
   const byCondition = aggregate(results);
+  const mmCalls = (id: string): number =>
+    results.filter((r) => r.condition === id).reduce((n, r) => n + r.mm_tool_calls, 0);
   const out = {
     generated_at: new Date().toISOString(),
+    // A reader of this file in six months must be able to see the tool lists were
+    // measured, not assumed, and see that the measurement contradicts the shipped docs.
+    conditions_provenance: {
+      omp_version: "18.4.3",
+      tool_names_source: "the `TOOLS` array in omp-extension/mm.ts, in source order",
+      tool_names: [
+        "mm_check", "mm_symbol", "mm_refs", "mm_type",
+        "mm_slice", "mm_packet", "mm_system", "mm_verify",
+      ],
+      measured_tools_flag_behaviour: {
+        note:
+          "Run directly on the installed omp; this CONTRADICTS omp://custom-tools.md, which " +
+          "states --tools validates only built-in names. The observed behaviour is what these " +
+          "results depend on.",
+        registered_and_named: "works; tool callable",
+        registered_not_named: "works; extension tools are force-included",
+        named_but_not_registered:
+          "hard startup error, 'Unknown tool in --tools', listing the registered tools. This is " +
+          "why the semantic condition names its mm_* tools: it turns an extension that failed " +
+          "to load into a loud failure instead of a silent downgrade to the baseline.",
+      },
+      semantic_extension:
+        ".harness/loader/mm-ext.ts — omp-extension/mm.ts has no default export, so `-e` on the " +
+        "library itself finds no factory and the tools silently do not exist. The loader lives " +
+        "outside every run work/ dir so the agent cannot edit the tool it is measured on.",
+    },
     results,
     by_condition: byCondition,
+    // If a semantic condition never calls an mm_* tool, its token count is not evidence
+    // about the semantic interface. Surface the total next to the rates.
+    mm_tool_calls_by_condition: Object.fromEntries(byCondition.map((s) => [s.condition, mmCalls(s.condition)])),
   };
   await mkdir(opts.runsDir, { recursive: true });
   await writeFile(join(opts.runsDir, "results.json"), JSON.stringify(out, null, 2) + "\n", "utf8");
 
-  // The two numbers, side by side. Read the columns together or the result is unreadable.
-  console.log("\n  condition     runs  passed  pass_rate  mean_in_tok  mean_calls  mean_secs");
+  // The two numbers the experiment exists for, side by side. Read the columns together
+  // or the result is unreadable: tokens only mean something next to a pass rate.
+  console.log("\n  condition     runs  passed  pass_rate  mean_in_tok  in_tok range       mean_calls  mean_secs  mm_calls");
   for (const s of byCondition) {
+    // The range is printed next to the mean on purpose. When the spread inside one
+    // condition is wider than the gap between conditions, the mean is not a finding,
+    // and a reader can only see that if the spread is on the same line.
+    const range = `${s.min_input_tokens}-${s.max_input_tokens}`;
     console.log(
       `  ${s.condition.padEnd(12)} ${String(s.runs).padStart(4)} ${String(s.passed).padStart(7)} ` +
       `${(s.pass_rate * 100).toFixed(0).padStart(9)}% ${s.mean_input_tokens.toFixed(0).padStart(12)} ` +
-      `${s.mean_tool_calls.toFixed(1).padStart(11)} ${s.mean_seconds.toFixed(1).padStart(10)}`,
+      `${range.padStart(15)} ${s.mean_tool_calls.toFixed(1).padStart(11)} ${s.mean_seconds.toFixed(1).padStart(10)} ` +
+      `${String(mmCalls(s.condition)).padStart(8)}`,
     );
+  }
+  for (const s of byCondition) {
+    console.log(`  ${s.condition} per-run in_tok: ${s.input_tokens_each.join(", ")}`);
   }
   console.log(`\nresults: ${join(opts.runsDir, "results.json")}`);
   return 0;

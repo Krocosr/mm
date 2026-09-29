@@ -54,19 +54,19 @@ fn add(t: view mut Table, key: u32) -> bool {
     while steps < SLOTS {
         if t.buckets[j].used == 0 { slot = j; steps = SLOTS } else { j = (j + 1) % SLOTS; steps = steps + 1 };
     };
-    if slot < SLOTS {
-        let fresh = Bucket { key: key, count: 1, used: 1 };
-        t.buckets[slot] = fresh;
-        t.used = t.used + 1;
-        return true;
-    };
-    false
     if slot == SLOTS { return false };
     let fresh = Bucket { key: key, count: 1, used: 1 };
     t.buckets[slot] = fresh;
     t.used = t.used + 1;
     true
 }
+
+fn count_of(t: view Table, key: u32) -> u32 {
+    let i = probe(t, key);
+    if i < SLOTS { t.buckets[i].count } else { 0 }
+}
+
+fn distinct(t: view Table) -> usize {
     t.used
 }
 

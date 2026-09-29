@@ -1,0 +1,12 @@
+`slot_pool.mm` is a fixed-capacity pool of records addressed by generational
+handles. A handle is a value naming a slot and the generation that slot was in
+when the handle was made, so freeing a record can retire the handle a caller is
+still holding.
+
+That retirement does not hold up. After a record has been released, its handle
+can still read a value, and it can read a record that now belongs to a different
+owner.
+
+Find the defect and fix it. Keep the existing function signatures, the slot
+reuse behaviour, and the free-list order. The file should still pass its own
+tests.

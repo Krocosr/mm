@@ -1,0 +1,6 @@
+{
+  "id": "slot_pool",
+  "prompt_file": "prompt.txt",
+  "hidden_test": "slot_pool_test.mm",
+  "description": "A generational handle pool that stamps a reused slot with the pool's unchanged generation, so a handle that was already retired still passes the staleness check and reads the new occupant's record."
+}

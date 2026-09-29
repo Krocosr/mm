@@ -1,22 +1,39 @@
 {
   "_comment": [
-    "Tool-name provenance. The two conditions differ ONLY in --tools; model, system",
-    "prompt, task prompt and work dir are identical, so any difference in tokens or",
-    "pass rate is attributable to the tool set.",
+    "Tool-name provenance. The two conditions differ ONLY in --tools and -e; model,",
+    "system prompt, task prompt and work dir are identical, so any difference in tokens",
+    "or pass rate is attributable to the tool set.",
     "",
-    "How the names were determined:",
-    "1. `omp --help` (v18.4.3) lists the built-in tool names, and an unknown name is a",
-    "   hard startup error, so --tools is validated against this exact vocabulary.",
-    "2. Reading omp-extension/mm.ts: the exported `TOOLS` array names the eight semantic",
-    "   tools mm_check, mm_symbol, mm_refs, mm_type, mm_slice, mm_packet, mm_system,",
-    "   mm_verify. Those are the names the daemon verbs in TOOL_TO_VERB are keyed by.",
-    "3. Verified by invocation: `omp --tools=read,grep,bash,edit,write ...` starts and",
-    "   streams events, so the baseline list is valid.",
+    "THE EIGHT TOOL NAMES, read verbatim from the `TOOLS` array in omp-extension/mm.ts,",
+    "in source order:",
+    "  mm_check, mm_symbol, mm_refs, mm_type, mm_slice, mm_packet, mm_system, mm_verify",
+    "There is no `mm_explain`. Diagnostics are `mm_check`, which maps to the daemon verb",
+    "`mm.diagnostics`; the CLI surfaces that verb to humans as `explain`. The extension",
+    "renamed it, so the tool is `mm_check`.",
     "",
-    "The extension must be loaded with -e for the mm_* names to resolve. An extension",
-    "registers tools by exporting a default factory taking the ExtensionAPI and calling",
-    "pi.registerTool({ name, ... }); the semantic list below names the tools that",
-    "omp-extension/mm.ts declares."
+    "HOW --tools BEHAVES, measured on the installed omp v18.4.3 rather than assumed.",
+    "Three cases were run directly:",
+    "  A. extension registers mm_check, --tools=read,mm_check   -> works, tool callable",
+    "  B. extension registers mm_check, --tools=read             -> works, tool STILL",
+    "     callable: extension-registered tools are force-included in the active set",
+    "  C. extension registers only mm_check, --tools=read,mm_slice -> hard startup error,",
+    "     'Unknown tool in --tools: mm_slice', listing mm_check under registered tools",
+    "",
+    "So naming the mm_* tools in --tools is NOT a no-op on this version: it is a load-time",
+    "ASSERTION. Case C is the reason the semantic list keeps them. If the extension fails",
+    "to load, the run dies immediately instead of silently continuing with only the four",
+    "built-ins, which would be a semantic condition that quietly measures the baseline.",
+    "Note this contradicts omp://custom-tools.md ('--tools currently validates only",
+    "built-in tool names'); the observed v18.4.3 behaviour above is what the harness",
+    "actually depends on, and case C is the regression test for it.",
+    "",
+    "The semantic extension is .harness/loader/mm-ext.ts, not omp-extension/mm.ts itself.",
+    "The library has no default export, and omp loads an extension by taking the module",
+    "or module.default as a factory, so `-e omp-extension/mm.ts` fails to load. The",
+    "loader is the OMP-loadable adapter: it default-exports the factory, spawns mmd",
+    "lazily per cwd, and forwards calls through the library's own MmExtension so the",
+    "tool-name-to-verb mapping stays owned by the library. It sits outside every run's",
+    "work/ directory so the agent under test cannot edit the tool it is measured on."
   ],
   "conditions": [
     {
@@ -28,7 +45,7 @@
     {
       "id": "semantic",
       "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
-      "extension": "A:/dev/mm/omp-extension/mm.ts",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
       "label": "semantic tools"
     }
   ]

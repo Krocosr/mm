@@ -10,8 +10,10 @@
 
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { aggregate, buildArgv, parseArgs, parseEvents } from "./runner.ts";
+import { mkdir, rm } from "node:fs/promises";
+import { join, sep } from "node:path";
+import { TOOLS } from "../omp-extension/mm.ts";
+import { aggregate, buildArgv, loadTask, parseArgs, parseEvents } from "./runner.ts";
 import { parseTestResults, verdict } from "./score.ts";
 
 const HARNESS = join(import.meta.dir);
@@ -50,6 +52,37 @@ describe("parseEvents", () => {
     expect(p.toolCalls).toBe(1);
     expect(p.isTerminal).toBe(true);
     expect(p.warnings).toEqual([]);
+  });
+
+  test("counts how many times each named tool was invoked", () => {
+    // This is what makes the conditions verifiably different rather than merely
+    // configured differently: a semantic run that never calls mm_* measured baseline.
+    const stream = [
+      turnEnd({ input: 1, output: 1, cacheRead: 0 }, [{ toolName: "read" }, { toolName: "mm_check" }]),
+      turnEnd({ input: 1, output: 1, cacheRead: 0 }, [{ toolName: "mm_check" }, { toolName: "edit" }]),
+      ev({ type: "agent_end", isTerminal: true }),
+    ].join("\n");
+    const p = parseEvents(stream);
+    expect(p.toolCalls).toBe(4);
+    expect(p.toolCallsByName).toEqual({ read: 1, mm_check: 2, edit: 1 });
+    // The histogram must total the same as the flat count, or one of them is lying.
+    expect(Object.values(p.toolCallsByName).reduce((a, b) => a + b, 0)).toBe(p.toolCalls);
+  });
+
+  test("an untitled tool result counts toward the total but not the histogram", () => {
+    const stream = [
+      turnEnd({ input: 1, output: 1, cacheRead: 0 }, [{}, { toolName: "bash" }]),
+      ev({ type: "agent_end", isTerminal: true }),
+    ].join("\n");
+    const p = parseEvents(stream);
+    expect(p.toolCalls).toBe(2);
+    expect(p.toolCallsByName).toEqual({ bash: 1 });
+  });
+
+  test("the captured real stream records which tools were used", async () => {
+    if (!existsSync(REAL_EVENTS)) return;
+    const p = parseEvents(await Bun.file(REAL_EVENTS).text());
+    expect(p.toolCallsByName.bash).toBe(2);
   });
 
   test("ignores usage on user and toolResult messages", () => {
@@ -159,13 +192,32 @@ describe("aggregate", () => {
         condition: "baseline", runs: 2, finished: 2, passed: 1, pass_rate: 0.5,
         mean_input_tokens: 200, mean_output_tokens: 1,
         mean_tool_calls: 10, mean_seconds: 10,
+        min_input_tokens: 100, max_input_tokens: 300, input_tokens_each: [100, 300],
       },
       {
         condition: "semantic", runs: 2, finished: 2, passed: 2, pass_rate: 1,
         mean_input_tokens: 100, mean_output_tokens: 1,
         mean_tool_calls: 4, mean_seconds: 10,
+        min_input_tokens: 50, max_input_tokens: 150, input_tokens_each: [50, 150],
       },
     ]);
+  });
+
+  test("the spread travels with the mean, so noise cannot read as a finding", () => {
+    // The reason this exists: in the first sweep, one condition's own runs differed 3x
+    // (6150 vs 1911). A mean alone would present that spread as if it were a result.
+    const [s] = aggregate([run("baseline", true, 6150, 5), run("baseline", true, 1911, 9)]);
+    expect(s!.mean_input_tokens).toBe(4030.5);
+    expect(s!.min_input_tokens).toBe(1911);
+    expect(s!.max_input_tokens).toBe(6150);
+    // Sorted, so the printed list reads low to high.
+    expect(s!.input_tokens_each).toEqual([1911, 6150]);
+  });
+
+  test("a single run has zero spread rather than a missing one", () => {
+    const [s] = aggregate([run("semantic", true, 42, 1)]);
+    expect(s!.min_input_tokens).toBe(42);
+    expect(s!.max_input_tokens).toBe(42);
   });
 
   test("an empty condition cannot claim a perfect score", () => {
@@ -221,26 +273,36 @@ describe("verdict", () => {
   const r = (module: string, passed: boolean) => ({ module, passed });
 
   test("passes only when every hidden test passed", () => {
-    expect(verdict([r("hidden", true), r("hidden", true)], ["hidden"]))
+    expect(verdict([r("hidden", true), r("hidden", true)]))
       .toMatchObject({ passed: true, total: 2, failed: 0 });
   });
 
   test("fails when any hidden test failed", () => {
-    const v = verdict([r("hidden", true), r("hidden", false)], ["hidden"]);
+    const v = verdict([r("hidden", true), r("hidden", false)]);
     expect(v.passed).toBe(false);
     expect(v.failed).toBe(1);
     expect(v.reason).toContain("1 of 2");
   });
 
+  test("recognises a nested hidden module", () => {
+    // `mm run` reports `hidden::stats_hidden::max holds`; parsing splits at the first
+    // `::`, so the filter has to match the `hidden` component and not the full name.
+    const parsed = parseTestResults("ok   hidden::stats_hidden::max holds\n");
+    expect(parsed[0]!.module).toBe("hidden");
+    expect(verdict(parsed).passed).toBe(true);
+    expect(verdict([r("hidden::stats_hidden", true)]).passed).toBe(true);
+  });
+
+
   test("ignores the agent's own tests", () => {
     // The agent may have edited or added its own tests; they must not vote on the grade.
-    const v = verdict([r("hidden", true), r("stats", false), r("stats", false)], ["hidden"]);
+    const v = verdict([r("hidden", true), r("stats", false), r("stats", false)]);
     expect(v.passed).toBe(true);
     expect(v.total).toBe(1);
   });
 
   test("zero reported hidden tests is a failure, not a pass", () => {
-    const v = verdict([r("stats", true)], ["hidden"]);
+    const v = verdict([r("stats", true)]);
     expect(v.passed).toBe(false);
     expect(v.reason).toContain("no hidden tests");
   });
@@ -292,6 +354,104 @@ describe("the two conditions differ in tool set and nothing else", () => {
     expect(argv).toContain("--no-session");
     expect(argv).toContain("--mode=json");
     expect(argv).toEqual(expect.arrayContaining(["-p", "p"]));
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("task specs resolve or fail loudly", () => {
+  const taskRoot = join(HARNESS, "selftest", "tasks");
+
+  test("reads the contract's snake_case keys", async () => {
+    // task.json is specified in snake_case. A loader that only understood camelCase
+    // would silently fall back to defaults and grade a prompt nobody was shown.
+    const t = await loadTask(taskRoot, "stats-seed");
+    expect(t.promptFile).toBe("prompt.txt");
+    expect(t.hiddenTest).toBe("stats_hidden.mm");
+  });
+
+  test("also reads the camelCase spelling", async () => {
+    const dir = join(taskRoot, "camel");
+    await mkdir(join(dir, "seed"), { recursive: true });
+    await Bun.write(join(dir, "the-prompt.txt"), "fix it");
+    await Bun.write(
+      join(dir, "task.json"),
+      JSON.stringify({ id: "camel", promptFile: "the-prompt.txt", hiddenTest: "h.mm" }),
+    );
+    try {
+      const t = await loadTask(taskRoot, "camel");
+      expect(t.promptFile).toBe("the-prompt.txt");
+      expect(t.hiddenTest).toBe("h.mm");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a missing prompt file is a hard error, not a default", async () => {
+    const dir = join(taskRoot, "broken");
+    await mkdir(join(dir, "seed"), { recursive: true });
+    await Bun.write(join(dir, "task.json"), JSON.stringify({ id: "broken", prompt_file: "nope.txt" }));
+    try {
+      // Silently defaulting to prompt.txt would run a different prompt than the task
+      // declares, and the run would still be scored as if it had been graded.
+      await expect(loadTask(taskRoot, "broken")).rejects.toThrow(/nope\.txt/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the semantic extension is loadable by omp", () => {
+  const loader = join(HARNESS, "loader", "mm-ext.ts");
+  const load = () => Bun.file(loader).text();
+
+  test("lives outside every run work dir", () => {
+    // The agent under test must not be able to edit the tool it is measured on.
+    expect(loader.includes(`${sep}work${sep}`)).toBe(false);
+    expect(loader.startsWith(HARNESS)).toBe(true);
+  });
+
+  test("default-exports a factory, which is what omp requires", async () => {
+    const src = await load();
+    expect(src).toMatch(/export default function \(pi: ExtensionAPI\)/);
+    expect(src).toContain("pi.registerTool");
+    expect(src).toContain('pi.on("session_shutdown"');
+  });
+
+  test("spawns the daemon lazily, never at module scope", async () => {
+    // OMP throws ExtensionRuntimeNotInitializedError if a runtime action runs at load.
+    const src = await load();
+    expect(src).not.toMatch(/^const \w+ = new Daemon/m);
+    expect(src).toContain("sessionFor(cwd)");
+  });
+
+  test("uses node:child_process, whose stdout has .on(\"data\")", async () => {
+    // Bun.spawn's stdout is a web ReadableStream with no `on("data")`, so the daemon
+    // reader would never fire and every mm_* call would hang until the run is killed.
+    const src = await load();
+    expect(src).toContain('from "node:child_process"');
+    expect(src).toContain('.stdout.on("data"');
+  });
+
+  test("registers exactly the eight tool names the library declares", async () => {
+    // Imported statically: the module specifier is a literal known at author time.
+    const names = TOOLS.map((t) => t.name);
+    expect(names).toEqual([
+      "mm_check", "mm_symbol", "mm_refs", "mm_type",
+      "mm_slice", "mm_packet", "mm_system", "mm_verify",
+    ]);
+    // The loader iterates TOOLS, so it cannot register a different set than the library.
+    const src = await load();
+    expect(src).toContain("for (const tool of TOOLS)");
+    const semantic = CONDITION_BY_ID.semantic!;
+    for (const n of names) expect(semantic.tools.split(",")).toContain(n);
+  });
+
+  test("the semantic condition loads the loader, not the bare library", () => {
+    // `-e omp-extension/mm.ts` cannot work: the library has no default export, so omp
+    // finds no factory and the tools silently do not exist.
+    // conditions.json stores POSIX separators; omp accepts them on Windows.
+    expect(CONDITION_BY_ID.semantic!.extension?.replace(/\//g, sep)).toBe(loader);
   });
 });
 

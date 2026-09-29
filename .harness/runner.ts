@@ -50,6 +50,8 @@ export interface RunRecord {
   output_tokens: number;
   cache_read_tokens: number;
   tool_calls: number;
+  /** Per-tool invocation counts, so condition differences are verifiable after the fact. */
+  tool_calls_by_name: Record<string, number>;
   turns: number;
   is_terminal: boolean;
   seconds: number;
@@ -93,6 +95,14 @@ export interface ParsedEvents {
    * `message_end` of each turn, so a partially-streamed message is not double counted.
    */
   usage: Usage;
+  /**
+   * How many times each tool was actually invoked, keyed by tool name.
+   *
+   * This is what makes the two conditions verifiably different rather than merely
+   * configured differently: a semantic run that finishes without touching an `mm_*`
+   * tool measured the baseline, and its token count must not be read as evidence.
+   */
+  toolCallsByName: Record<string, number>;
   toolCalls: number;
   turns: number;
   isTerminal: boolean;
@@ -127,6 +137,7 @@ export function parseEvents(text: string): ParsedEvents {
   let turns = 0;
   let isTerminal = false;
   let sawAgentEnd = false;
+  const toolCallsByName: Record<string, number> = {};
   // Usage of the most recent assistant message_end, carried into the next turn_end.
   let pending: Usage | null = null;
 
@@ -155,7 +166,13 @@ export function parseEvents(text: string): ParsedEvents {
         if (pending) usage = addUsage(usage, pending);
         pending = null;
         const results = ev.toolResults;
-        if (Array.isArray(results)) toolCalls += results.length;
+        if (Array.isArray(results)) {
+          toolCalls += results.length;
+          for (const r of results) {
+            const name = (r as { toolName?: unknown }).toolName;
+            if (typeof name === "string") toolCallsByName[name] = (toolCallsByName[name] ?? 0) + 1;
+          }
+        }
         break;
       }
       case "agent_end": {
@@ -175,7 +192,7 @@ export function parseEvents(text: string): ParsedEvents {
   }
   if (!sawAgentEnd) warnings.push("no agent_end event");
 
-  return { usage, toolCalls, turns, isTerminal, warnings };
+  return { usage, toolCalls, toolCallsByName, turns, isTerminal, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +210,18 @@ export interface ConditionSummary {
   mean_output_tokens: number;
   mean_tool_calls: number;
   mean_seconds: number;
+  /**
+   * Min and max input tokens in this condition.
+   *
+   * A mean over a handful of runs hides the thing that decides whether the mean means
+   * anything. Observed spread in the first sweep was 3x *within* a single condition
+   * (6150 vs 1911 for `baseline`), which is wider than any difference between conditions.
+   * Quoting the mean alone would present noise as a finding, so the range travels with it.
+   */
+  min_input_tokens: number;
+  max_input_tokens: number;
+  /** The individual per-run input tokens, so a reader can see the distribution. */
+  input_tokens_each: number[];
 }
 
 const mean = (xs: number[]): number => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
@@ -228,16 +257,20 @@ export function aggregate(runs: readonly GradableRun[]): ConditionSummary[] {
   const out: ConditionSummary[] = [];
   for (const [condition, group] of byCondition) {
     const passed = group.filter((r) => r.passed).length;
+    const tokens = group.map((r) => r.input_tokens);
     out.push({
       condition,
       runs: group.length,
       finished: group.length,
       passed,
       pass_rate: group.length === 0 ? 0 : round(passed / group.length),
-      mean_input_tokens: round(mean(group.map((r) => r.input_tokens))),
+      mean_input_tokens: round(mean(tokens)),
       mean_output_tokens: round(mean(group.map((r) => r.output_tokens))),
       mean_tool_calls: round(mean(group.map((r) => r.tool_calls))),
       mean_seconds: round(mean(group.map((r) => r.seconds))),
+      min_input_tokens: tokens.length === 0 ? 0 : Math.min(...tokens),
+      max_input_tokens: tokens.length === 0 ? 0 : Math.max(...tokens),
+      input_tokens_each: tokens.slice().sort((a, b) => a - b),
     });
   }
   return out.sort((a, b) => a.condition.localeCompare(b.condition));
@@ -259,15 +292,31 @@ export async function discoverTasks(tasksDir: string): Promise<string[]> {
   return ids.sort();
 }
 
-async function loadTask(tasksDir: string, id: string): Promise<TaskSpec> {
+/**
+ * Read a task's spec, accepting both the contract's snake_case keys and the camelCase
+ * spelling. A silently-ignored key is the dangerous case here: a task whose prompt file
+ * resolved wrong would be graded against a prompt nobody saw, so an unresolvable
+ * prompt is a hard error rather than a default.
+ */
+export async function loadTask(tasksDir: string, id: string): Promise<TaskSpec> {
   const dir = join(tasksDir, id);
-  const raw = await readFile(join(dir, "task.json"), "utf8");
-  const spec = JSON.parse(raw) as Partial<TaskSpec>;
+  const spec = JSON.parse(await readFile(join(dir, "task.json"), "utf8")) as Record<string, unknown>;
+  const str = (key: string): string | null => {
+    for (const k of [key, key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase())]) {
+      const v = spec[k];
+      if (typeof v === "string" && v !== "") return v;
+    }
+    return null;
+  };
+  const promptFile = str("prompt_file") ?? "prompt.txt";
+  if (!existsSync(join(dir, promptFile))) {
+    throw new Error(`task \`${id}\`: prompt file \`${promptFile}\` not found in ${dir}`);
+  }
   return {
-    id: spec.id ?? id,
-    promptFile: spec.promptFile ?? "prompt.txt",
-    hiddenTest: spec.hiddenTest ?? null,
-    description: spec.description ?? "",
+    id: typeof spec.id === "string" ? spec.id : id,
+    promptFile,
+    hiddenTest: str("hidden_test"),
+    description: typeof spec.description === "string" ? spec.description : "",
     dir,
   };
 }
@@ -303,6 +352,68 @@ export function buildArgv(opts: {
   return argv;
 }
 
+
+/**
+ * Make `work` an empty directory, tolerating a transient Windows lock.
+ *
+ * Returns the directory actually used, which is `work` unless the old one could not be
+ * removed; the caller must seed whichever is returned.
+ */
+async function resetWorkDir(work: string): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rm(work, { recursive: true, force: true });
+      await mkdir(work, { recursive: true });
+      return work;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "EPERM") throw e;
+      await Bun.sleep(500 * (attempt + 1));
+    }
+  }
+  // Still locked: take a new name so the run proceeds instead of taking the sweep down.
+  const fallback = `${work}-${Date.now().toString(36)}`;
+  await mkdir(fallback, { recursive: true });
+  return fallback;
+}
+/**
+ * The record for a run that never got as far as producing an event stream.
+ *
+ * It is written to the same place a real run's record goes, so the sweep stays
+ * resumable and the failure is visible to the scorer instead of vanishing.
+ */
+function failedRun(
+  task: TaskSpec,
+  condition: Condition,
+  repeat: number,
+  opts: { runsDir: string; model: string },
+  reason: string,
+): RunRecord {
+  return {
+    task: task.id,
+    condition: condition.id,
+    repeat,
+    status: "crashed",
+    ok: false,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    tool_calls: 0,
+    tool_calls_by_name: {},
+    turns: 0,
+    is_terminal: false,
+    seconds: 0,
+    exit_code: null,
+    tools: condition.tools,
+    extension: condition.extension,
+    work_dir: join(runDir(opts.runsDir, task.id, condition.id, repeat), "work"),
+    events: join(runDir(opts.runsDir, task.id, condition.id, repeat), "events.ndjson"),
+    model: opts.model,
+    started_at: new Date().toISOString(),
+    error: reason,
+  };
+}
+
 async function runOne(opts: {
   task: TaskSpec;
   condition: Condition;
@@ -313,13 +424,16 @@ async function runOne(opts: {
 }): Promise<RunRecord> {
   const { task, condition, repeat, runsDir, model, timeout } = opts;
   const dir = runDir(runsDir, task.id, condition.id, repeat);
-  const work = join(dir, "work");
   const eventsPath = join(dir, "events.ndjson");
 
   // A fresh work dir per run: a repeat must never inherit a previous attempt's edits,
   // and the hidden test is never copied in — only `seed/` is.
-  await rm(work, { recursive: true, force: true });
-  await mkdir(work, { recursive: true });
+  //
+  // On Windows a just-finished run can still hold a handle on its work dir, and `rm`
+  // fails EBUSY. Retrying briefly clears the common case; if the dir stays locked the
+  // run moves to a fresh uniquely-named one rather than aborting. Isolation holds
+  // either way, because a new name is a new directory with nothing inherited.
+  const work = await resetWorkDir(join(dir, "work"));
   await cp(join(task.dir, "seed"), work, { recursive: true });
 
   const prompt = (await readFile(join(task.dir, task.promptFile), "utf8")).trim();
@@ -337,9 +451,27 @@ async function runOne(opts: {
     env: { ...process.env, NO_COLOR: "1" },
   });
 
-  // Read both pipes concurrently with the wait, or a full pipe buffer deadlocks the child.
-  const stdoutPromise = new Response(proc.stdout).text();
-  const stderrPromise = new Response(proc.stderr).text();
+  // Stream both pipes to disk as they arrive rather than buffering in memory. A run
+  // that is killed mid-flight has already spent real tokens, and those events only
+  // survive if they were written out before the kill.
+  await mkdir(dir, { recursive: true });
+  const eventsOut = Bun.file(eventsPath).writer();
+  const stderrOut = Bun.file(join(dir, "stderr.log")).writer();
+  const decoder = new TextDecoder();
+  /** A pipe's decoder, with a latch so a late chunk cannot write to a closed file. */
+  interface StreamSink { write(chunk: Uint8Array): void; close(): void }
+  const sink = (out: { write(s: string): void; end(): void }): StreamSink => {
+    let closed = false;
+    return {
+      write: (chunk: Uint8Array) => { if (!closed) out.write(decoder.decode(chunk, { stream: true })); },
+      close: () => { if (!closed) { closed = true; out.end(); } },
+    };
+  };
+  const outSink = sink(eventsOut);
+  const errSink = sink(stderrOut);
+  const drain = (stream: ReadableStream<Uint8Array>, s: StreamSink) =>
+    (async () => { for await (const chunk of stream) s.write(chunk); })();
+  const drains = Promise.all([drain(proc.stdout, outSink), drain(proc.stderr, errSink)]);
 
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -354,12 +486,17 @@ async function runOne(opts: {
     clearTimeout(timer);
   }
 
-  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+  // A killed `omp` can leave a `bash` grandchild holding the pipe open, so waiting on
+  // the drains unconditionally would let one wedged run stretch the sweep past its cap.
+  // Give them a short grace period, then close the files with whatever has landed.
+  await Promise.race([drains, Bun.sleep(5000)]);
+  outSink.close();
+  errSink.close();
   const seconds = (Date.now() - t0) / 1000;
 
-  await mkdir(dir, { recursive: true });
-  await writeFile(eventsPath, stdout, "utf8");
-  if (stderr.trim() !== "") await writeFile(join(dir, "stderr.log"), stderr, "utf8");
+  const stdout = await readFile(eventsPath, "utf8");
+  const stderr = await readFile(join(dir, "stderr.log"), "utf8").catch(() => "");
+  if (stderr.trim() === "") await rm(join(dir, "stderr.log"), { force: true });
 
   const parsed = parseEvents(stdout);
   // A stream that never reached agent_end means the agent did not finish its own loop.
@@ -376,6 +513,7 @@ async function runOne(opts: {
     output_tokens: parsed.usage.output,
     cache_read_tokens: parsed.usage.cacheRead,
     tool_calls: parsed.toolCalls,
+    tool_calls_by_name: parsed.toolCallsByName,
     turns: parsed.turns,
     is_terminal: parsed.isTerminal,
     seconds: Math.round(seconds * 100) / 100,
@@ -515,9 +653,21 @@ async function main(argv: readonly string[]): Promise<number> {
     `timeout ${opts.timeout}s, model ${opts.model}`,
   );
 
-  const records: RunRecord[] = [];
+  // Load and validate every task BEFORE spending a single model call. A task whose
+  // spec does not resolve must abort the sweep: running the other tasks and reporting
+  // a pass rate would hide a broken fixture behind a healthy-looking number.
+  const tasks: TaskSpec[] = [];
   for (const id of taskIds) {
-    const task = await loadTask(opts.tasksDir, id);
+    try {
+      tasks.push(await loadTask(opts.tasksDir, id));
+    } catch (e) {
+      console.error(`runner: ${(e as Error).message}`);
+      return 2;
+    }
+  }
+
+  const records: RunRecord[] = [];
+  for (const task of tasks) {
     for (const condition of conditions) {
       for (let repeat = 1; repeat <= opts.repeats; repeat++) {
         const dir = runDir(opts.runsDir, task.id, condition.id, repeat);
@@ -531,14 +681,30 @@ async function main(argv: readonly string[]): Promise<number> {
           continue;
         }
         console.log(`  ${task.id}/${condition.id}/${repeat}: running…`);
-        const rec = await runOne({
-          task, condition, repeat,
-          runsDir: opts.runsDir, model: opts.model, timeout: opts.timeout,
-        });
+        // One run blowing up must not abort the sweep: a long sweep is expected to hit
+        // transient failures, and losing every later run to the first exception throws
+        // away work that was already paid for. The failure is recorded instead.
+        let rec: RunRecord;
+        try {
+          rec = await runOne({
+            task, condition, repeat,
+            runsDir: opts.runsDir, model: opts.model, timeout: opts.timeout,
+          });
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e);
+          rec = failedRun(task, condition, repeat, opts, reason);
+          await mkdir(runDir(opts.runsDir, task.id, condition.id, repeat), { recursive: true });
+          await writeFile(
+            join(runDir(opts.runsDir, task.id, condition.id, repeat), "run.json"),
+            JSON.stringify(rec, null, 2) + "\n",
+            "utf8",
+          );
+        }
         records.push(rec);
         console.log(
           `  ${task.id}/${condition.id}/${repeat}: ${rec.status} ` +
-          `in=${rec.input_tokens} out=${rec.output_tokens} tools=${rec.tool_calls} ${rec.seconds}s`,
+          `in=${rec.input_tokens} out=${rec.output_tokens} tools=${rec.tool_calls} ${rec.seconds}s` +
+          (rec.error ? ` — ${rec.error.split("\n")[0]!.slice(0, 160)}` : ""),
         );
       }
     }

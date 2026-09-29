@@ -1,7 +1,7 @@
 // A record header packed into one u32. Three fields share the word: a tag, a
-// payload length, and a flag set. Reading a field is a shift and a mask, so the
-// only thing that can go wrong is reading a field at the wrong width - the
-// neighbouring bits then look like a perfectly good small number.
+// payload length, and a flag set. Reading a field is a shift and a mask, so
+// the layout is the whole contract - the neighbouring bits sit right next to
+// the field and are indistinguishable from a small number of their own.
 
 const TAG_SHIFT: u32 = 0
 const LEN_SHIFT: u32 = 12

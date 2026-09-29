@@ -1,0 +1,6 @@
+{
+  "id": "tally",
+  "prompt_file": "prompt.txt",
+  "hidden_test": "tally_test.mm",
+  "description": "An open-addressed counting table whose probe walks forward but never wraps at the end of the slot array, so a key whose probe run runs off the end reads back as absent and inserting it again creates a duplicate entry."
+}

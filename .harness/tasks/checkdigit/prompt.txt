@@ -1,0 +1,9 @@
+`checkdigit.mm` implements the mod-10 check digit used on decimal identifiers.
+`luhn_total` sums a number's digits with every second digit doubled, and
+`check_digit` returns the digit that completes a payload.
+
+It does not always agree with the rule. Some numbers are accepted that should
+be rejected, and some payloads get a check digit that does not complete them.
+
+Find the defect and fix it. Keep the existing function signatures and the
+definition of the total. The file should still pass its own tests.

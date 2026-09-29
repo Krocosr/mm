@@ -1,0 +1,10 @@
+`bitfield.mm` packs a record header into a single 32-bit word - a tag, a payload
+length, and a set of flags - and reads the three fields back out again.
+
+Reading a record back is not reliable. For some records the fields that come
+out are not the fields that went in, and the dispatcher scores that record
+against the wrong header.
+
+Find the defect and fix it. The field boundaries in `pack` are what the rest
+of the system assumes, so do not move or resize a field to make the numbers
+line up. The file should still pass its own tests.

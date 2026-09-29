@@ -1,0 +1,10 @@
+`tally.mm` is a fixed-size open-addressed counting table. A key hashes to a
+home slot, collisions walk forward, and `add` folds a stream of keys into
+per-key counts that `count_of`, `distinct`, and `total` read back.
+
+Counting is not reliable. After a run of keys, some of them read back as absent
+or as too low a count, and the number of distinct keys does not always match
+what was actually folded in.
+
+Find the defect and fix it. The table size, the hash, and the bucket layout are
+fixed. The file should still pass its own tests.

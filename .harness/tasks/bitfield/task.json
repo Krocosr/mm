@@ -1,0 +1,6 @@
+{
+  "id": "bitfield",
+  "prompt_file": "prompt.txt",
+  "hidden_test": "bitfield_test.mm",
+  "description": "A packed 32-bit record header whose tag accessor masks the field at the wrong width, so tags of 1024 and above come back truncated and the dispatcher's score is wrong for them."
+}
