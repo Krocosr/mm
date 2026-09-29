@@ -359,7 +359,7 @@ process down, which is a property the interpreter needs regardless of what it is
     | | count | meaning |
     |---|---:|---|
     | **False rejections** | 16 | the prelude implements it; the checker rejects the call with `E0203` |
-    | **Phantoms** | 19 | the checker types it; the runtime does not implement it |
+    | **Phantoms** | 31 | the checker types it; the runtime does not implement it |
 
     | receiver | false rejections | phantoms |
     |---|---|---|
@@ -383,7 +383,38 @@ process down, which is a property the interpreter needs regardless of what it is
     This is the third time the same shape has appeared here: a duplicated source of
     truth — `slice.len` versus `elems.length`, the six `want*` accessors, and now the
     two method registries. **When many programs fail alike, the productive question is
-    "what does this consult?" rather than "what is it doing?"**
+    "what does this consult?" rather than "what is it doing?"
+
+### 11.1 Closing it, and what else was behind it
+
+`methodType` now mirrors the prelude exactly, and `tests/registry.test.ts` asserts both
+directions. The reported drift went from 16 false rejections and 31 phantoms to **zero
+of each**.
+
+But the interesting part was how little the *error count* moved at first. `check
+examples` reported 178 errors, and after the registry fix it reported 179. A count-only
+view would have said the work did nothing. What had actually happened is that 16 wrong
+rejections became correct ones and 31 missing rejections appeared — the same total,
+but now every remaining error is true. Counting is not the same as measuring.
+
+Chasing the honest remainder found three more defects that were not registry drift at
+all, and they were worth more:
+
+| Defect | Errors | Why it was missed |
+|---|---:|---|
+| `checkMethod` called `deepUnown` before `methodType`, so a handle reached the table as its bare inner named type | 36 | `renderish` printed the receiver as the literal word `type`, so the messages read as nonsense rather than as a missing receiver table. |
+| `Bytes` and `Text` indexing rejected, though `indexOf` has always accepted both | 28 | The message said `builtin#-12 cannot be indexed` — a builtin id, not a type name, so it did not look like a rule about a type anyone had heard of. |
+| Both variant resolvers guarded on `t.form !== "choice"`, but `TypeDef` never produces `"choice"` — it is `"union"` | 20 | `checkEnumVariantValue` was dead code. Its comment described the qualified `Ident.variant` form, so it read as a deliberate narrow rule rather than a guard that never matched. |
+
+**`check examples`: 178 → 75 errors.** The suite is 210 passing, 0 failing, and the
+example corpus is unchanged at 59/75 — which is the point. Every one of these was a
+*false rejection*: the interpreter ran the program. The corpus pass count did not move
+because the corpus measures the interpreter, and none of these bugs were in it.
+
+That is the fourth time on this project that a large cluster of failures turned out to
+be the checker disagreeing with a runtime that worked. It is also the clearest argument
+for running both continuously: a suite that only exercised the interpreter would never
+have noticed that the *compiler* was refusing correct code 178 times.
 
 ---
 
