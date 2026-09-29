@@ -173,12 +173,33 @@ export const PURE_BUILTIN_FNS: readonly BuiltinFn[] = [
     effects: [], doc: "constrain a value to a closed range",
   },
   {
-    name: "pow", params: ["i64", "i64"], ret: "i64",
+    // The prelude's `**` works on any integer width, so a narrower signature than `T`
+    // would reject `pow(u32, 2)` — which the interpreter runs.
+    name: "pow", params: ["T", "T"], ret: "T",
     effects: [], doc: "integer exponentiation",
   },
   {
     name: "sqrt", params: ["f64"], ret: "f64",
     effects: [], doc: "square root; always floating point, as the runtime computes it",
+  },
+  // Associated constructors. `evalCall` rewrites `Owner::member` to `owner_member`
+  // before consulting the prelude, so these are reachable as written — but the checker
+  // had no route to them, and a corpus program writing `Handle::at(i, g)` was refused.
+  {
+    name: "Handle::at", params: ["usize", "u32"], ret: "handle T",
+    effects: [], doc: "a generational handle naming a slot and the generation it had",
+  },
+  {
+    name: "Handle::none", params: [], ret: "T",
+    effects: [], doc: "the null handle",
+  },
+  {
+    name: "Map::new", params: [], ret: "T",
+    effects: [], doc: "an empty map",
+  },
+  {
+    name: "Set::new", params: [], ret: "T",
+    effects: [], doc: "an empty set",
   },
   {
     name: "assert", params: ["bool"], ret: "Unit",

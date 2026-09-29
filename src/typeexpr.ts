@@ -416,7 +416,7 @@ export class BodyChecker {
 
       // -- calls ---------------------------------------------------------
       case "call":
-        return this.checkCall(expr);
+        return this.checkCall(expr, expected);
       case "method":
         return this.checkMethod(expr);
 
@@ -680,7 +680,7 @@ export class BodyChecker {
     }
   }
 
-  private checkCall(expr: Extract<Expr, { kind: "call" }>): Ty {
+  private checkCall(expr: Extract<Expr, { kind: "call" }>, expected?: Ty): Ty {
     const c = this.c;
     if (expr.callee.kind !== "path") {
       this.checkExpr(expr.callee, undefined);
@@ -735,7 +735,7 @@ export class BodyChecker {
       // by defining a function of the same name.
       const pure = pureBuiltinFnId(name);
       if (pure !== Number.MIN_SAFE_INTEGER) {
-        return this.checkPureBuiltinCall(expr.args, expr.span, name, pure);
+        return this.checkPureBuiltinCall(expr.args, expr.span, name, pure, expected);
       }
       // A zero-argument enum variant used as a value, e.g. `Route.fast` written bare.
       const enumTy = this.checkEnumVariantValue(name, expr.span);
@@ -830,8 +830,10 @@ export class BodyChecker {
   }
 
   /** A pure builtin call: same machinery, different table. */
-  private checkPureBuiltinCall(args: Expr[], span: Span, qualified: string, id: number): Ty {
-    return this.checkBuiltinCall(args, span, qualified, pureBuiltinFnById(id)!);
+  private checkPureBuiltinCall(
+    args: Expr[], span: Span, qualified: string, id: number, expected?: Ty,
+  ): Ty {
+    return this.checkBuiltinCall(args, span, qualified, pureBuiltinFnById(id)!, expected);
   }
 
   /**
@@ -841,7 +843,9 @@ export class BodyChecker {
    * reached both as `fs.open(p)` (a method-shaped call) and as `open(p)` after a `use`.
    * Serves both the authority table and the pure one; they differ only in shadowing order.
    */
-  private checkBuiltinCall(args: Expr[], span: Span, qualified: string, def: BuiltinFn): Ty {
+  private checkBuiltinCall(
+    args: Expr[], span: Span, qualified: string, def: BuiltinFn, expected?: Ty,
+  ): Ty {
     const c = this.c;
     if (def.params.length !== args.length) {
       c.error(
@@ -871,7 +875,12 @@ export class BodyChecker {
       }
     });
     this.facts.calls.set(factKey(span), { callee: anyBuiltinFnId(def.name), span, argTys });
-    return resolveMiniType(def.ret, [seed]);
+    // A constructor's result type is not derivable from its arguments — `Handle::at(i, g)`
+    // names a slot, and what it produces is a handle to whatever the *caller* expects.
+    // When the context is a borrow-shaped type, it is the better seed: binding `T` to the
+    // first argument instead would make `Handle::at` return its own `usize` index.
+    const context = expected && isViewParam(expected) ? deepResolve(deepUnown(expected)) : null;
+    return resolveMiniType(def.ret, [context ?? seed]);
   }
 
   /**
