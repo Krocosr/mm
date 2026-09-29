@@ -880,8 +880,18 @@ export class BodyChecker {
     return null;
   }
 
-  /** Builtin methods on slices, text, bytes, options, and results. */
-  private methodType(base: Ty, name: string, span: Span): { params: Ty[]; ret: Ty } | null {
+  /**
+   * The type of a method, by receiver.
+   *
+   * The builtin half of this is the *checker's* registry of what methods exist, kept by
+   * hand and separate from the prelude's `<type>_<name>` table. The two drift: a method
+   * the interpreter implements but this omits becomes a false rejection (`E0203`) on a
+   * program that runs correctly. `tests/registry.test.ts` asserts the two agree, so the
+   * next method added to the prelude fails a test rather than becoming a rejection.
+   *
+   * Public so that test can reach it. The only other caller is `checkMethod`.
+   */
+  methodType(base: Ty, name: string, span: Span): { params: Ty[]; ret: Ty } | null {
     if (base.k === "slice" || base.k === "array") {
       switch (name) {
         case "len": return { params: [], ret: { k: "prim", name: "usize" } };
