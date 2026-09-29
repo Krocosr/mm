@@ -222,7 +222,24 @@ export interface ConditionSummary {
   max_input_tokens: number;
   /** The individual per-run input tokens, so a reader can see the distribution. */
   input_tokens_each: number[];
+  /**
+   * Median input tokens, reported beside the mean.
+   *
+   * With eight runs per condition and a 10x spread, the mean and the median disagree
+   * about which condition is cheaper — the mean is dragged by a tail of expensive runs.
+   * A reader shown only the mean would be shown a conclusion that reverses under a
+   * different choice of statistic, which is the whole problem in one number.
+   */
+  median_input_tokens: number;
 }
+
+/** Middle value, or the mean of the two middle values for an even count. */
+const median = (xs: readonly number[]): number => {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+};
 
 const mean = (xs: number[]): number => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 const round = (n: number): number => Math.round(n * 100) / 100;
@@ -271,6 +288,7 @@ export function aggregate(runs: readonly GradableRun[]): ConditionSummary[] {
       min_input_tokens: tokens.length === 0 ? 0 : Math.min(...tokens),
       max_input_tokens: tokens.length === 0 ? 0 : Math.max(...tokens),
       input_tokens_each: tokens.slice().sort((a, b) => a - b),
+      median_input_tokens: round(median(tokens)),
     });
   }
   return out.sort((a, b) => a.condition.localeCompare(b.condition));

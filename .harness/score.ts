@@ -362,16 +362,17 @@ async function main(argv: readonly string[]): Promise<number> {
 
   // The two numbers the experiment exists for, side by side. Read the columns together
   // or the result is unreadable: tokens only mean something next to a pass rate.
-  console.log("\n  condition     runs  passed  pass_rate  mean_in_tok  in_tok range       mean_calls  mean_secs  mm_calls");
+  console.log("\n  condition     runs  passed  pass_rate  mean_in_tok  med_in_tok  in_tok range       mean_calls  mean_secs  mm_calls");
   for (const s of byCondition) {
-    // The range is printed next to the mean on purpose. When the spread inside one
-    // condition is wider than the gap between conditions, the mean is not a finding,
-    // and a reader can only see that if the spread is on the same line.
+    // Mean, median and range on one line. They disagree here, and which statistic you
+    // pick changes the conclusion — that disagreement *is* the finding, so none of the
+    // three is optional and the spread is never printed on a line of its own.
     const range = `${s.min_input_tokens}-${s.max_input_tokens}`;
     console.log(
       `  ${s.condition.padEnd(12)} ${String(s.runs).padStart(4)} ${String(s.passed).padStart(7)} ` +
       `${(s.pass_rate * 100).toFixed(0).padStart(9)}% ${s.mean_input_tokens.toFixed(0).padStart(12)} ` +
-      `${range.padStart(15)} ${s.mean_tool_calls.toFixed(1).padStart(11)} ${s.mean_seconds.toFixed(1).padStart(10)} ` +
+      `${s.median_input_tokens.toFixed(0).padStart(11)} ${range.padStart(15)} ` +
+      `${s.mean_tool_calls.toFixed(1).padStart(11)} ${s.mean_seconds.toFixed(1).padStart(10)} ` +
       `${String(mmCalls(s.condition)).padStart(8)}`,
     );
   }

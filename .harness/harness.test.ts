@@ -192,13 +192,13 @@ describe("aggregate", () => {
         condition: "baseline", runs: 2, finished: 2, passed: 1, pass_rate: 0.5,
         mean_input_tokens: 200, mean_output_tokens: 1,
         mean_tool_calls: 10, mean_seconds: 10,
-        min_input_tokens: 100, max_input_tokens: 300, input_tokens_each: [100, 300],
+        min_input_tokens: 100, max_input_tokens: 300, input_tokens_each: [100, 300], median_input_tokens: 200,
       },
       {
         condition: "semantic", runs: 2, finished: 2, passed: 2, pass_rate: 1,
         mean_input_tokens: 100, mean_output_tokens: 1,
         mean_tool_calls: 4, mean_seconds: 10,
-        min_input_tokens: 50, max_input_tokens: 150, input_tokens_each: [50, 150],
+        min_input_tokens: 50, max_input_tokens: 150, input_tokens_each: [50, 150], median_input_tokens: 100,
       },
     ]);
   });
@@ -218,6 +218,24 @@ describe("aggregate", () => {
     const [s] = aggregate([run("semantic", true, 42, 1)]);
     expect(s!.min_input_tokens).toBe(42);
     expect(s!.max_input_tokens).toBe(42);
+  });
+
+  test("the median does not move when one run is an outlier", () => {
+    // The reason the median is reported at all: in the first sweep the mean and median
+    // disagreed about which condition was cheaper, because one condition had a tail of
+    // expensive runs. A statistic that survives one bad run is the one to quote.
+    const [s] = aggregate([
+      run("baseline", true, 6150, 5),
+      run("baseline", true, 1911, 5),
+      run("baseline", true, 20000, 5),
+    ]);
+    expect(s!.median_input_tokens).toBe(6150);
+    expect(s!.mean_input_tokens).toBe(9353.67);
+  });
+
+  test("an odd run count reports the middle value, not an interpolation", () => {
+    const [s] = aggregate([run("semantic", true, 10, 1), run("semantic", true, 20, 1), run("semantic", true, 90, 1)]);
+    expect(s!.median_input_tokens).toBe(20);
   });
 
   test("an empty condition cannot claim a perfect score", () => {
