@@ -343,7 +343,7 @@ The fast-build sweep, plus the ablation arm: 4 tasks × 2 repeats,
 |---|---:|---:|---:|---:|---:|---|---:|
 | baseline — grep | 8 | 5 | 63 % | 13 806 | 12 284 | 4 457–27 792 | 0 |
 | semantic — mm tools, no grep | 8 | 7 | 88 % | 10 469 | 10 674 | 3 882–17 988 | 13 |
-| semantic_grep — both | 7 | 7 | **100 %** | 11 029 | 9 946 | 2 236–24 580 | 9 |
+| semantic_grep — both | 8 | 8 | **100 %** | 10 378 | **8 352** | 2 236–24 580 | 12 |
 
 Restricting to runs that reached a terminal state, which is the comparison §9.5 says is
 the honest one:
@@ -351,16 +351,18 @@ the honest one:
 | condition | finished | mean in_tok | median in_tok |
 |---|---:|---:|---:|
 | baseline | 6 | 11 822 | 12 284 |
-| semantic | 7 | **9 964** | **9 163** |
-| semantic_grep | 7 | 11 029 | 9 946 |
+| semantic | 7 | **9 964** | 9 163 |
+| semantic_grep | 8 | 10 378 | **8 352** |
 
-On finished runs the two statistics agree, which they did not when timeouts were folded
-in. The ordering is consistent — removing `grep` appears to matter most, and the mm tools
-something on top of it — and the ablation is the arm that separates those two.
+Both non-baseline arms land well below baseline, and the ablation does **not** cleanly
+separate the two explanations: `semantic` is cheaper by mean, `semantic_grep` by median,
+and the two statistics disagree about which arm is better. That is the signature of a
+2.4x noise floor rather than of an effect.
 
-**But the tools are used *less* when `grep` is available** — 9 calls against 13 — which
-is the same preference seen everywhere else in this phase: given a choice, the agent
-reaches for `grep` and `read`, and leaves the projection alone.
+The tools are used about equally with and without `grep` available — 13 calls against 12
+— which is the same preference seen throughout: given a choice, the agent reaches for
+`grep` and `read` and leaves the projection alone.
+
 
 ### 10.1 But the saving cannot be attributed to the semantic tools
 
