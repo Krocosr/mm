@@ -526,10 +526,11 @@ Ordered by what currently blocks a defensible claim, not by effort.
     wrong type into a match.
 
     **`check examples`: 264 → 78.** The trajectory reads oddly, and that is the lesson:
-    67 before the test pass, 264 immediately after it, 82 once the false rejections the
-    pass exposed were fixed. A count that goes *up* when you fix a real hole is not a
-    regression; it is the hole being measured for the first time. The largest remaining
-    cluster is 2.
+    67 before the test pass, 264 immediately after it, 78 once the false rejections the
+    pass exposed were fixed — and the associated constructors, which the pass also
+    surfaced, took it the rest of the way. A count that goes *up* when you fix a real
+    hole is not a regression; it is the hole being measured for the first time. The
+    largest remaining cluster is 2.
 
 2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
    individually by cause; `routing_intent` is red on purpose because making it green
