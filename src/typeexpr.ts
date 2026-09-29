@@ -1278,12 +1278,31 @@ export class BodyChecker {
     if (!parts) return null;
     const variant = parts[1];
     for (const t of c.program.allTypes()) {
-      if (t.form !== "choice") continue;
+      // `union`, not `choice`: the form union in `TypeDef` never produces `"choice"`, so
+      // the guard below never matched and this whole resolver was dead.
+      if (t.form !== "union") continue;
       if (t.fieldNames.includes(variant)) {
         return { k: "named", def: t.id, args: [] };
       }
     }
     void span;
+    return null;
+  }
+
+  /**
+   * A bare nullary variant name in value position.
+   *
+   * `type Json = Null | Num { raw: f64 }` makes `Null` a value the program can write
+   * without qualification. Resolvable only when the name is unambiguous across the
+   * program's union types — the same rule the interpreter's variant table already
+   * uses, so the two agree on what a bare name means.
+   */
+  private checkBareVariantValue(name: string): Ty | null {
+    const c = this.c;
+    for (const t of c.program.allTypes()) {
+      if (t.form !== "union") continue;
+      if (t.fieldNames.includes(name)) return { k: "named", def: t.id, args: [] };
+    }
     return null;
   }
 
@@ -1301,12 +1320,19 @@ export class BodyChecker {
     const t = c.program.resolveType(name, c.moduleFor(span));
     if (t !== null) {
       c.error(
-        "E0205", "type_as_value",
+        "E0205",
+        "type_as_value",
         `\`${name}\` is a type, not a value`,
         span,
       );
       return TY_ERR;
     }
+    // A bare nullary variant name is a value: `type Json = Null | Num { .. }` makes
+    // `Null` constructible on its own, and programs write `Ok(Null)` and `[Null, ..]`.
+    // `checkEnumVariantValue` only sees the qualified `Ident.variant` form, so the bare
+    // one fell through to "cannot find in this scope" — 17 sites in `json_parser` alone.
+    const bare = this.checkBareVariantValue(name);
+    if (bare !== null) return bare;
     c.error("E0203", "unknown_name", `cannot find \`${name}\` in this scope`, span, {
       data: { name, module: c.moduleFor(span) },
       repairs: [],
