@@ -364,6 +364,11 @@ export class BodyChecker {
         if (baseTy.k === "slice") return baseTy.elem;
         if (baseTy.k === "array") return baseTy.elem;
         if (baseTy.k === "ptr") return baseTy.inner;
+        // `Bytes` and `Text` index to their element type. `indexOf` in the interpreter
+        // has always accepted both — a `Bytes` yields `u8`, a `Text` yields `char` — so
+        // rejecting them here was a false rejection on 20 sites in the corpus alone.
+        if (baseTy.k === "named" && baseTy.def === BUILTIN.Bytes_) return { k: "prim", name: "u8" };
+        if (baseTy.k === "named" && baseTy.def === BUILTIN.Text_) return { k: "prim", name: "char" };
         c.error("E0205", "not_indexable", `\`${renderish(baseTy)}\` cannot be indexed`, expr.span);
         return TY_ERR;
       }
