@@ -10,8 +10,11 @@
  *   - the System IR can enumerate the program's full authority surface;
  *   - a user cannot shadow a capability away, since resolution finds the builtin first.
  *
- * Pure builtins (arithmetic, text, collections) live in the interpreter prelude, not
- * here, because they carry no authority and need no policy.
+ * Pure builtins (arithmetic, text, collections) carry no authority, so they get no effect
+ * row and no policy — but they are still declared here, because this table is also the
+ * signature registry the checker resolves calls against. They live in the interpreter
+ * prelude for their *implementation*; their *types* have to be here too, or a call to
+ * working code is refused with `E0203 unknown_function`.
  *
  * See docs/spec/kernel.md §4, §6.4.
  */
@@ -131,13 +134,81 @@ export const BUILTIN_FNS: readonly BuiltinFn[] = [
     name: "handle_of", params: ["T"], ret: "handle T",
     effects: [], doc: "convert an arena value into a checked generational handle",
   },
+
 ];
+
+/**
+ * Pure builtins: implemented in the interpreter prelude, carrying no authority.
+ *
+ * They are a *separate* table from `BUILTIN_FNS` because the two have opposite shadowing
+ * rules. A capability builtin must win over a user function — otherwise a program could
+ * define `fn open(..)` and shed the effect it was going to request, which is the whole
+ * point of registering them. A pure builtin is just a function, so a user function of the
+ * same name must win, exactly as it does at run time: `evalCall` resolves the user
+ * function *before* falling back to a builtin.
+ *
+ * Having them in the wrong table, or checked in the wrong order, produces a false
+ * rejection either way — declaring `sum` here and checking builtins first made a program's
+ * own `fn sum(xs: view [f32])` fail to resolve against its own call sites.
+ *
+ * `T` binds to the first argument's type. A function whose result depends on the *element*
+ * type of a slice argument cannot be expressed in this notation, because `T` is already
+ * bound to the whole slice; such a builtin must take a concrete element type.
+ */
+export const PURE_BUILTIN_FNS: readonly BuiltinFn[] = [
+  {
+    name: "abs", params: ["T"], ret: "T",
+    effects: [], doc: "absolute value; preserves the argument's numeric type",
+  },
+  {
+    name: "min", params: ["T", "T"], ret: "T",
+    effects: [], doc: "the smaller of two values of the same numeric type",
+  },
+  {
+    name: "max", params: ["T", "T"], ret: "T",
+    effects: [], doc: "the larger of two values of the same numeric type",
+  },
+  {
+    name: "clamp", params: ["T", "T", "T"], ret: "T",
+    effects: [], doc: "constrain a value to a closed range",
+  },
+  {
+    name: "pow", params: ["i64", "i64"], ret: "i64",
+    effects: [], doc: "integer exponentiation",
+  },
+  {
+    name: "sqrt", params: ["f64"], ret: "f64",
+    effects: [], doc: "square root; always floating point, as the runtime computes it",
+  },
+  {
+    name: "assert", params: ["bool"], ret: "Unit",
+    effects: [], doc: "fail the run unless the condition holds",
+  },
+  {
+    name: "assert_eq", params: ["T", "T"], ret: "Unit",
+    effects: [], doc: "fail the run unless the two values are equal",
+  },
+];
+
+export function pureBuiltinFnId(name: string): number {
+  const i = PURE_BUILTIN_FNS.findIndex((f) => f.name === name);
+  if (i < 0) return Number.MIN_SAFE_INTEGER;
+  return PURE_BUILTIN_FN_BASE - i;
+}
+
+export function pureBuiltinFnById(id: number): BuiltinFn | null {
+  if (id > PURE_BUILTIN_FN_BASE) return null;
+  return PURE_BUILTIN_FNS[PURE_BUILTIN_FN_BASE - id] ?? null;
+}
 
 /**
  * Ids for builtin functions live in their own negative block, below the builtin *types*.
  * They are stable across runs; the semantic graph hashes them by name.
  */
 export const BUILTIN_FN_BASE = -1000;
+
+/** Ids for the pure table, below the authority block so the two never collide. */
+export const PURE_BUILTIN_FN_BASE = BUILTIN_FN_BASE - 1000;
 
 export function builtinFnId(name: string): number {
   const i = BUILTIN_FNS.findIndex((f) => f.name === name);
@@ -150,11 +221,27 @@ export function builtinFnById(id: number): BuiltinFn | null {
   return BUILTIN_FNS[BUILTIN_FN_BASE - id] ?? null;
 }
 
+/**
+ * The id for a name in either table, authority block first.
+ *
+ * `checkBuiltinCall` records the callee id in the call facts and now serves both tables,
+ * so it recovers the id from a definition rather than carrying it in.
+ */
+export function anyBuiltinFnId(name: string): number {
+  const authority = builtinFnId(name);
+  return authority !== Number.MIN_SAFE_INTEGER ? authority : pureBuiltinFnId(name);
+}
+
 /** Resolve the mini-notation used in `BuiltinFn.ret` against the builtin type universe. */
 export function resolveMiniType(mini: string, args: readonly Ty[] = []): Ty {
   let s = mini.trim();
   if (s.endsWith("?")) return { k: "option", inner: resolveMiniType(s.slice(0, -1), args) };
   if (s === "Unit") return { k: "record", fields: [] };
+  // `[T]` is a slice. Without this it fell through to the error type, so a builtin with a
+  // slice parameter — `proc.exec`'s `[Text]` — silently accepted any argument, because
+  // unification against an error type always succeeds.
+  const bracket = /^\[(.+)\]$/.exec(s);
+  if (bracket) return { k: "slice", elem: resolveMiniType(bracket[1]!, args) };
   const call = /^([A-Za-z_][A-Za-z0-9_]*)\s*<(.+)>$/.exec(s);
   if (call) {
     const name = call[1]!;

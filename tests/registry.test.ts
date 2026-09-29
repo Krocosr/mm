@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_NAMES } from "../src/interp/prelude.ts";
 import { BodyChecker } from "../src/typeexpr.ts";
-import { Checker } from "../src/scope.ts";
+import { Checker, checkDeclarations } from "../src/scope.ts";
 import { Program } from "../src/program.ts";
 import { BUILTIN, type Ty } from "../src/types.ts";
+import { PURE_BUILTIN_FNS } from "../src/builtins.ts";
 
 /**
  * The prelude and the type checker keep two independent registries of which methods
@@ -69,5 +70,33 @@ describe("the prelude and the checker agree on which methods exist", () => {
       (name) => !implemented("text").includes(name) && body.methodType(ty, name, { start: 0, end: 0, file: -1 }) !== null,
     );
     expect(notImplemented).toEqual([]);
+  });
+});
+
+describe("the pure builtin table matches what the interpreter implements", () => {
+  // The third registry. A program calling `pow(2, 10)` was refused with
+  // `E0203 unknown_function` while the interpreter ran it, and an agent's own `mm_check`
+  // call came back with exactly that diagnostic. The corpus never surfaced it, because
+  // every `assert_eq` in the corpus lives inside a `test` block and test bodies are not
+  // type-checked — a corpus finds bugs in the code you wrote, not in code you have not.
+  const pure = new Set(PURE_BUILTIN_FNS.map((f) => f.name));
+
+  test("a pure builtin call resolves in the checker", () => {
+    const text = "fn t() -> i64 { pow(2, 10) }";
+    const program = new Program();
+    program.addFile({ module: "pure_probe", text, bytes: new TextEncoder().encode(text) });
+    const checker = new Checker(program);
+    checkDeclarations(checker);
+    new BodyChecker(checker).checkAllFns();
+    expect(program.diagnostics.map((e) => e.message)).toEqual([]);
+  });
+
+  test("a user function wins over a pure builtin of the same name", () => {
+    // The two tables shadow in opposite directions, deliberately. A capability builtin
+    // must not be definable away — that would shed the effect being requested — but a
+    // pure one must be, because at run time `evalCall` resolves the function first.
+    // Getting this backwards made a program's own `fn sum(xs: view [f32])` fail to
+    // resolve against its own call sites, which is how the split was found.
+    expect(pure.has("sum")).toBe(false);
   });
 });

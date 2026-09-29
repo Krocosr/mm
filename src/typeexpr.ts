@@ -15,7 +15,15 @@ import {
   deepUnown, owned, unown, unify,
 } from "./types.ts";
 import { type FnInfo, type Program, isNominal } from "./program.ts";
-import { builtinFnById, builtinFnId, resolveMiniType } from "./builtins.ts";
+import {
+  anyBuiltinFnId,
+  type BuiltinFn,
+  builtinFnById,
+  builtinFnId,
+  pureBuiltinFnById,
+  pureBuiltinFnId,
+  resolveMiniType,
+} from "./builtins.ts";
 import { type Binder, type Checker, genericScope, resolveTypeExpr } from "./scope.ts";
 
 /** What the expression pass records for the ownership pass and the graph. */
@@ -664,7 +672,7 @@ export class BodyChecker {
     // A `use`d capability builtin called by its bare name, e.g. `use fs; open(path)`.
     const bid = builtinFnId(name);
     if (bid !== Number.MIN_SAFE_INTEGER) {
-      return this.checkBuiltinCall(expr.args, expr.span, name, bid);
+      return this.checkBuiltinCall(expr.args, expr.span, name, builtinFnById(bid)!);
     }
 
     const binder = c.scope.lookup(name);
@@ -687,6 +695,15 @@ export class BodyChecker {
       // not functions: they carry no authority and resolve purely structurally.
       const constructed = this.checkBuiltinConstructor(name, expr.args, expr.span);
       if (constructed) return constructed;
+      // A user function wins over a *pure* builtin, exactly as it does at run time:
+      // `evalCall` resolves the function first and only then falls back to a builtin.
+      // The authority builtins above are deliberately checked earlier and unconditionally,
+      // because a program must not be able to shed a capability it was going to request
+      // by defining a function of the same name.
+      const pure = pureBuiltinFnId(name);
+      if (pure !== Number.MIN_SAFE_INTEGER) {
+        return this.checkPureBuiltinCall(expr.args, expr.span, name, pure);
+      }
       // A zero-argument enum variant used as a value, e.g. `Route.fast` written bare.
       const enumTy = this.checkEnumVariantValue(name, expr.span);
       if (enumTy) return enumTy;
@@ -741,7 +758,7 @@ export class BodyChecker {
       const qualified = `${expr.base.value}.${expr.name}`;
       const bid = builtinFnId(qualified);
       if (bid !== Number.MIN_SAFE_INTEGER) {
-        return this.checkBuiltinCall(expr.args, expr.span, qualified, bid);
+        return this.checkBuiltinCall(expr.args, expr.span, qualified, builtinFnById(bid)!);
       }
     }
     // Resolve twice: once keeping the ownership wrapper, once without. `deepUnown` is
@@ -760,15 +777,20 @@ export class BodyChecker {
     return t.ret;
   }
 
+  /** A pure builtin call: same machinery, different table. */
+  private checkPureBuiltinCall(args: Expr[], span: Span, qualified: string, id: number): Ty {
+    return this.checkBuiltinCall(args, span, qualified, pureBuiltinFnById(id)!);
+  }
+
   /**
-   * Type-check a call to a capability builtin against its fixed signature.
+   * Type-check a call to a builtin against its fixed signature.
    *
    * Takes the argument list rather than a whole call expression, because a builtin can be
    * reached both as `fs.open(p)` (a method-shaped call) and as `open(p)` after a `use`.
+   * Serves both the authority table and the pure one; they differ only in shadowing order.
    */
-  private checkBuiltinCall(args: Expr[], span: Span, qualified: string, id: number): Ty {
+  private checkBuiltinCall(args: Expr[], span: Span, qualified: string, def: BuiltinFn): Ty {
     const c = this.c;
-    const def = builtinFnById(id)!;
     if (def.params.length !== args.length) {
       c.error(
         "E0206", "call_arity",
@@ -796,7 +818,7 @@ export class BodyChecker {
         if (m) c.error("E0205", "argument_type", `argument ${i + 1} of \`${qualified}\`: ${m.reason}`, a.span);
       }
     });
-    this.facts.calls.set(factKey(span), { callee: id, span, argTys });
+    this.facts.calls.set(factKey(span), { callee: anyBuiltinFnId(def.name), span, argTys });
     return resolveMiniType(def.ret, [seed]);
   }
 
