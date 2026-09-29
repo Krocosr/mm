@@ -343,7 +343,7 @@ The fast-build sweep, plus the ablation arm: 4 tasks × 2 repeats,
 |---|---:|---:|---:|---:|---:|---|---:|
 | baseline — grep | 8 | 5 | 63 % | 13 806 | 12 284 | 4 457–27 792 | 0 |
 | semantic — mm tools, no grep | 8 | 7 | 88 % | 10 469 | 10 674 | 3 882–17 988 | 13 |
-| semantic_grep — both | 8 | 8 | **100 %** | 11 029 | 9 946 | 2 236–24 580 | 9 |
+| semantic_grep — both | 7 | 7 | **100 %** | 11 029 | 9 946 | 2 236–24 580 | 9 |
 
 Restricting to runs that reached a terminal state, which is the comparison §9.5 says is
 the honest one:
@@ -352,7 +352,7 @@ the honest one:
 |---|---:|---:|---:|
 | baseline | 6 | 11 822 | 12 284 |
 | semantic | 7 | **9 964** | **9 163** |
-| semantic_grep | 8 | 11 029 | 9 946 |
+| semantic_grep | 7 | 11 029 | 9 946 |
 
 On finished runs the two statistics agree, which they did not when timeouts were folded
 in. The ordering is consistent — removing `grep` appears to matter most, and the mm tools
