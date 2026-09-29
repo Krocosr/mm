@@ -1,21 +1,5 @@
 /**
  * MM — the Oh My Pi extension.
- *
- * This is the surface an agent actually touches. It exposes the compiler's semantic tools
- * as OMP tools, each backed by one query against `mmd`, so the agent never greps source
- * and never re-derives what a symbol means.
- *
- * The design rule, from the report: **replace textual rediscovery with compiler
- * queries.** Every tool here returns structure — identities, types, effect rows,
- * dependency edges — not text to read. `mm.slice` in particular is the tool that makes
- * the token claim: it returns a dependency-closed context sized to a budget, so the
- * agent asks for what it needs instead of reading the package.
- *
- * The extension does no analysis of its own. It speaks the same protocol as the CLI, so
- * an answer from the agent and an answer from a terminal cannot disagree.
- *
- * See docs/spec/kernel.md §7.
- */
 
 /** One tool as OMP sees it. */
 export interface ToolDefinition {
@@ -43,6 +27,20 @@ export interface DaemonResponse {
 /** The daemon connection. Injectable so tests and the CLI can supply their own. */
 export interface DaemonClient {
   request(req: DaemonRequest): Promise<DaemonResponse>;
+}
+
+/**
+ * The handles one spawned daemon process exposes.
+ *
+ * `stdin` and `stdout` must come from the *same* process: the protocol is one JSON
+ * object per line in each direction, so writing to a second daemon while reading the
+ * first produces a tool that hangs forever and looks merely slow.
+ */
+export interface DaemonChild {
+  stdin: NodeJS.WritableStream;
+  stdout: NodeJS.ReadableStream;
+  /** Register a callback for process exit, so in-flight requests can be failed. */
+  onExit?: (cb: () => void) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,17 +199,32 @@ export class StdioDaemonClient implements DaemonClient {
   private buffer = "";
   private nextId = 1;
   private readonly pending = new Map<number, (r: DaemonResponse) => void>();
+  private child: DaemonChild | null = null;
 
+  /**
+   * @param spawn    Creates the daemon process. Called **once**, lazily.
+   * @param timeoutMs How long a single request may go unanswered before it is failed.
+   */
   constructor(
-    private readonly spawn: () => { stdin: NodeJS.WritableStream; stdout: NodeJS.ReadableStream },
+    private readonly spawn: () => DaemonChild,
+    private readonly timeoutMs = 15_000,
   ) {}
 
-  private ensureStarted(): void {
-    if (this.started) return;
-    this.started = true;
-    const { stdout } = this.spawn();
-    stdout.setEncoding?.("utf8");
-    stdout.on("data", (chunk: string | Buffer) => {
+  /**
+   * Start the daemon on first use and keep the handle.
+   *
+   * The child is memoized because stdin and stdout must belong to the *same* process.
+   * Holding only stdout here and re-invoking `spawn` for stdin in `request` means a
+   * factory that creates a new process per call writes requests into a second daemon
+   * while reading replies from the first — every request then hangs forever, which
+   * looks exactly like a slow tool rather than a transport bug.
+   */
+  private ensureStarted(): DaemonChild {
+    if (this.child) return this.child;
+    const child = this.spawn();
+    this.child = child;
+    child.stdout.setEncoding?.("utf8");
+    child.stdout.on("data", (chunk: string | Buffer) => {
       this.buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
       let nl = this.buffer.indexOf("\n");
       while (nl >= 0) {
@@ -221,16 +234,20 @@ export class StdioDaemonClient implements DaemonClient {
         nl = this.buffer.indexOf("\n");
       }
     });
+    // A daemon that exits takes every in-flight request with it. Failing them here
+    // turns a silent hang into a diagnosable error at the call site.
+    child.onExit?.(() => this.failAll(`the mm daemon exited while a request was in flight`));
+    return child;
   }
-
-  private started = false;
 
   private dispatch(line: string): void {
     let res: DaemonResponse;
     try {
       res = JSON.parse(line) as DaemonResponse;
     } catch {
-      return; // a line we cannot parse is not answerable; the caller's timeout covers it
+      // A line we cannot parse carries no id, so nothing is waiting on it. Dropping it
+      // is correct: the request that wanted it will hit its own timeout and say so.
+      return;
     }
     const resolve = this.pending.get(res.id);
     if (resolve) {
@@ -239,13 +256,48 @@ export class StdioDaemonClient implements DaemonClient {
     }
   }
 
+  /** Fail every request still waiting, with the same reason. */
+  private failAll(reason: string): void {
+    for (const [id, resolve] of this.pending) {
+      this.pending.delete(id);
+      resolve({ id, ok: false, error: reason, code: "E0901" });
+    }
+  }
+
   async request(req: Omit<DaemonRequest, "id">): Promise<DaemonResponse> {
-    this.ensureStarted();
+    const child = this.ensureStarted();
     const id = this.nextId++;
-    const { stdin } = this.spawn();
     return new Promise<DaemonResponse>((resolve) => {
-      this.pending.set(id, resolve);
-      stdin.write(`${JSON.stringify({ ...req, id })}\n`);
+      let settled = false;
+      const finish = (r: DaemonResponse): void => {
+        if (settled) return;
+        settled = true;
+        this.pending.delete(id);
+        clearTimeout(timer);
+        resolve(r);
+      };
+      const timer = setTimeout(() => {
+        finish({
+          id,
+          ok: false,
+          error: `\`${req.tool}\` did not answer within ${this.timeoutMs}ms (is the mm daemon running?)`,
+          code: "E0901",
+        });
+      }, this.timeoutMs);
+      // Deliberately referenced. An unref'd timer does not fire when nothing else keeps
+      // the loop alive, which is exactly the situation a timeout exists for: a daemon
+      // that went quiet is the only thing left pending. `finish` clears it on every path.
+      this.pending.set(id, finish);
+      try {
+        child.stdin.write(`${JSON.stringify({ ...req, id })}\n`);
+      } catch (e) {
+        finish({
+          id,
+          ok: false,
+          error: `\`${req.tool}\` could not reach the mm daemon: ${String(e)}`,
+          code: "E0901",
+        });
+      }
     });
   }
 }

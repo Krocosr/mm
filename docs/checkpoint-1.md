@@ -25,7 +25,7 @@ Every number below is reproducible with the commands shown. Nothing here is esti
 | Semantic graph, packets, slices | `src/graph.ts`, `src/packet.ts`, `src/slice.ts` | Complete |
 | Query layer, CLI, daemon, OMP extension | `src/query.ts`, `src/cli.ts`, `src/mmd.ts`, `omp-extension/mm.ts` | Complete |
 
-**Verification.** `bun test tests` → **205 passing, 0 failing**. `bunx tsc --noEmit` → clean.
+**Verification.** `bun test tests` → **200 passing, 0 failing**. `bunx tsc --noEmit` → clean.
 `bun test tests/corpus.test.ts` → 29 passing, 118 assertions, covering both the safety
 corpus (each rejected at its named code) and the false-rejection suite.
 
@@ -123,7 +123,7 @@ exists to set up, and it is the next thing to build.
 ## 5. The examples corpus: partial, and improving
 
 `examples/` holds 30 programs and 73 test items. **48 of 73 pass under the interpreter**,
-up from 6 of 75 at the first measurement. `bun test tests` → 205 passing, 0 failing.
+up from 6 of 75 at the first measurement. The permanent suite is 200 tests, 0 failing.
 
 The gap was never thirty independent problems. Nearly every jump came from a single
 *systemic* interpreter defect — a duplicated source of truth, or one accessor in a family

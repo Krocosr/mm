@@ -1,0 +1,49 @@
+{
+  "corpus": "examples",
+  "tokenizerId": "tiktoken/cl100k_base",
+  "approximate": false,
+  "rows": [
+    {
+      "label": "narrow",
+      "goal": "encode a byte buffer as base64 text",
+      "files": 12,
+      "symbols": 39,
+      "sourceTokens": 0,
+      "sliceTokens": 1831,
+      "sourceChars": 0,
+      "sliceChars": 5899,
+      "tokenizerId": "tiktoken/cl100k_base",
+      "approximate": false,
+      "closed": true,
+      "overBudget": false
+    },
+    {
+      "label": "medium",
+      "goal": "insert into a binary search tree and report depth",
+      "files": 14,
+      "symbols": 73,
+      "sourceTokens": 0,
+      "sliceTokens": 2604,
+      "sourceChars": 0,
+      "sliceChars": 8564,
+      "tokenizerId": "tiktoken/cl100k_base",
+      "approximate": false,
+      "closed": true,
+      "overBudget": false
+    },
+    {
+      "label": "broad",
+      "goal": "inspect the package",
+      "files": 21,
+      "symbols": 126,
+      "sourceTokens": 0,
+      "sliceTokens": 3880,
+      "sourceChars": 0,
+      "sliceChars": 12746,
+      "tokenizerId": "tiktoken/cl100k_base",
+      "approximate": false,
+      "closed": true,
+      "overBudget": false
+    }
+  ]
+}

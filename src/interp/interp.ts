@@ -25,7 +25,7 @@ import type {
   ArenaState, BuiltinContext, Cell, CloseRecord, HandleStore, SharedState, Value,
 } from "./value.ts";
 import {
-  boolV, floatV, hashValue, intV, isResourceValue, makeCell, textV, tupleV, UNIT,
+  boolV, deref, floatV, hashValue, intV, isResourceValue, makeCell, textV, tupleV, UNIT,
   valueEq, variantV, recordV, sliceV,
 } from "./value.ts";
 
@@ -685,7 +685,7 @@ export class Interp {
         this.assignTo(expr.target, this.eval(expr.value), expr.span);
         return UNIT;
       case "try": return this.evalTry(expr);
-      case "cast": return this.eval(expr.operand);
+      case "cast": return this.evalCast(expr);
       case "is": return this.evalIs(expr);
       case "unsafe": {
         const sig = this.execBlock(expr.body);
@@ -934,6 +934,27 @@ export class Interp {
     return UNIT;
   }
 
+  /**
+   * A cast converts the *representation*, not just the static type. Returning the operand
+   * unchanged made `b as char` an `int`, so `"" + (b as char)` failed and the value read
+   * back as a number wherever the program had asked for a character.
+   */
+  private evalCast(expr: Expr & { kind: "cast" }): Value {
+    const v = this.eval(expr.operand);
+    if (expr.ty.kind !== "prim") return v;
+    const to = expr.ty.name;
+    // `Text::from(u8)` is the documented direction: a byte is a character code point.
+    if (to === "char" && v.k === "int") return { k: "char", v: String.fromCodePoint(Number(v.v)) };
+    if (to === "u8" && v.k === "char") return intV(BigInt(v.v.codePointAt(0) ?? 0));
+    if (to === "f32" || to === "f64") {
+      if (v.k === "int") return floatV(Number(v.v));
+      if (v.k === "float") return floatV(v.v);
+    }
+    // Every remaining conversion in the numeric tower is a reinterpretation of the same
+    // `bigint`, so the value already carries it; only floats need rewriting.
+    return v;
+  }
+
   // -- operators -------------------------------------------------------------
 
   private evalUnary(expr: Expr & { kind: "unary" }): Value {
@@ -998,6 +1019,13 @@ export class Interp {
    */
   private arith(op: "+" | "-" | "*" | "/" | "%", l: Value, r: Value, span: Span): Value {
     if (op === "+" && l.k === "text" && r.k === "text") return textV(l.v + r.v);
+    // Building a string one character at a time is the natural way to decode bytes, so
+    // `Text + char` joins rather than failing. Only `+` concatenates: subtracting a
+    // character from a string is still meaningless.
+    if (op === "+") {
+      if (l.k === "text" && r.k === "char") return textV(l.v + r.v);
+      if (l.k === "char" && r.k === "text") return textV(l.v + r.v);
+    }
     if (l.k === "float" || r.k === "float") {
       const a = l.k === "float" ? l.v : l.k === "int" ? Number(l.v) : Number.NaN;
       const b = r.k === "float" ? r.v : r.k === "int" ? Number(r.v) : Number.NaN;
@@ -1228,11 +1256,25 @@ export class Interp {
    * in the scope the caller pops when the arm finishes, so a `for` loop over a
    * `view mut` slice can write its element binding back.
    */
-  private matchPattern(pat: Pattern, v: Value, scope: Scope): boolean {
+  private matchPattern(pat: Pattern, raw: Value, scope: Scope): boolean {
     this.tick();
+    // A `view` parameter is a borrow of the caller's place, so matching has to read
+    // through it before it can see a tag or a payload. Doing this here rather than at
+    // each call site keeps every caller of the matcher consistent.
+    const v = deref(raw);
     switch (pat.kind) {
       case "wildcard": return true;
-      case "bind": return this.declare(pat.name, v, pat.span, scope);
+      // A bare identifier is a binding *unless* it names a variant of a union. The parser
+      // has no type information, so `Nothing => 0` reaches us as a binding and would match
+      // every value, making the first arm of a `match` swallow the rest. A union variant
+      // only ever matches its own tag, so consult the variant table first; a binding whose
+      // name is not a variant still binds, which keeps `match x { n => .. }` working.
+      case "bind": {
+        if (v.k === "variant" && (this.variants.get(pat.name) ?? []).length > 0) {
+          return this.matchPattern({ kind: "unit", path: pat.name, span: pat.span }, v, scope);
+        }
+        return this.declare(pat.name, v, pat.span, scope);
+      }
       case "lit": return valueEq(this.eval(pat.value), v);
       case "or": {
         for (const alt of pat.alts) {
@@ -1532,6 +1574,13 @@ export class Interp {
     for (const unit of this.program.units) {
       for (const f of unit.fns) {
         if (f.name !== name) continue;
+        // Only a method declared in a `trait` or an `impl` is reachable by method syntax.
+        // A *free function* that happens to share a builtin method's name -- `fn len(..)`
+        // beside `xs.len()` -- is not that builtin, and letting it answer the call made
+        // `xs.len()` silently return whatever the free function computes for a receiver
+        // it was never written for. `methodIds` is the record of which functions really
+        // are methods, so consult it rather than guessing from the name.
+        if (!unit.methodIds.has(f.id)) continue;
         if (found !== null && found !== f.id) return null;
         found = f.id;
       }

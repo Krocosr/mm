@@ -154,7 +154,9 @@ const fns: Record<string, BuiltinFn> = {
   },
   text_chars: (ctx, args, span) => {
     const s = wantText(ctx, args, 0, span);
-    return sliceV([...s].map((c) => ({ k: "text", v: c } satisfies Value)));
+    // `char`, not one-character `Text`: this is what `s[i]` already yields, and a program
+    // that walks a string matching character literals needs the two to agree.
+    return sliceV([...s].map((c) => ({ k: "char", v: c } satisfies Value)));
   },
   text_starts_with: (ctx, args, span) => ({
     k: "bool",

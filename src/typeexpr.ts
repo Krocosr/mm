@@ -598,6 +598,15 @@ export class BodyChecker {
         return { k: "prim", name: "bool" };
       case "+": case "-": case "*": case "/": case "%": {
         if (lhs.k === "err" || rhs.k === "err") return TY_ERR;
+        // Concatenation is a `+` the runtime has always had: `arith` joins two `Text`
+        // values, and `"" + word` is how a program builds a string. Rejecting it here
+        // made every string-building program fail to typecheck while running fine.
+        if (expr.op === "+"
+          && ((lhs.k === "named" && lhs.def === BUILTIN.Text_
+                && ((rhs.k === "named" && rhs.def === BUILTIN.Text_)
+                  || (rhs.k === "prim" && rhs.name === "char")))
+            || (lhs.k === "prim" && lhs.name === "char"
+                && rhs.k === "named" && rhs.def === BUILTIN.Text_))) return lhs.k === "prim" ? rhs : lhs;
         if (!isNumeric(lhs) || !isNumeric(rhs)) {
           c.error(
             "E0205", "bad_operand",
@@ -903,6 +912,17 @@ export class BodyChecker {
         case "trim": return { params: [], ret: base };
         case "split": return { params: [base], ret: { k: "named", def: BUILTIN.Stream, args: [base] } };
         case "contains": return { params: [base], ret: { k: "prim", name: "bool" } };
+        // The interpreter implements these, so a program that uses them is not writing
+        // nonsense -- the table was simply incomplete. `chars` yields `char` values, the
+        // same thing `s[i]` produces, and `slice` takes a start and an optional end, both
+        // in bytes, exactly as `text_slice` does.
+        case "as_bytes": return { params: [], ret: { k: "named", def: BUILTIN.Bytes_, args: [] } };
+        case "bytes": return { params: [], ret: { k: "slice", elem: { k: "prim", name: "u8" } } };
+        case "chars": return { params: [], ret: { k: "slice", elem: { k: "prim", name: "char" } } };
+        case "slice": return {
+          params: [{ k: "prim", name: "usize" }, { k: "prim", name: "usize" }],
+          ret: base,
+        };
         case "clone": return { params: [], ret: base };
         default: return null;
       }
