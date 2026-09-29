@@ -250,6 +250,13 @@ export function unify(a: Ty, b: Ty, subst: Map<number, Ty>): UnifyMismatch | nul
   if (x.k === "err" || y.k === "err") return null;
   if (x.k === "var") return bind(x, y, subst);
   if (y.k === "var") return bind(y, x, subst);
+  // A fixed-size array and a slice are the same value at run time — both are
+  // `k:"slice"` — so the type-level distinction cannot be enforced by anything, and
+  // enforcing it anyway only produces false rejections on programs the interpreter
+  // runs. Compare them as slices and let the element type decide. The `len` is
+  // dropped: nothing downstream can observe it.
+  if (x.k === "array" && y.k === "slice") return unify(x.elem, y.elem, subst);
+  if (x.k === "slice" && y.k === "array") return unify(x.elem, y.elem, subst);
   if (x.k !== y.k) return { expected: x, actual: y, reason: `expected ${x.k}, found ${y.k}` };
 
   switch (x.k) {
