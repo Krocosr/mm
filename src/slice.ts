@@ -127,7 +127,22 @@ export function buildSlice(graph: SemanticGraph, request: SliceRequest): Slice {
 
   let selected = closure(wanted);
   const costs = new Map<string, number>();
-  for (const s of scored) costs.set(s.node.hash, s.tokens);
+  const relevance = new Map<string, number>();
+  for (const s of scored) {
+    costs.set(s.node.hash, s.tokens);
+    relevance.set(s.node.hash, s.relevance);
+  }
+
+  // Outgoing edges, then the incoming count they imply. "Does anything still selected
+  // depend on this node?" was answered by rescanning the whole selection with a linear
+  // `deps.includes`, once per candidate, once per removal — cubic, and about eleven
+  // seconds on a thirty-file corpus. The answer is a *count*, maintained as nodes leave.
+  const dependsOn = new Map<string, readonly string[]>();
+  for (const h of selected) dependsOn.set(h, graph.byHash(h)?.deps ?? []);
+  const blockers = new Map<string, number>();
+  for (const h of selected) {
+    for (const t of dependsOn.get(h) ?? []) blockers.set(t, (blockers.get(t) ?? 0) + 1);
+  }
 
   // Budget trimming, always closure-safe: a node may only leave if nothing that stays
   // still depends on it.
@@ -136,14 +151,23 @@ export function buildSlice(graph: SemanticGraph, request: SliceRequest): Slice {
     let victim: string | null = null;
     let worst = Infinity;
     for (const h of selected) {
-      if (!closureSafeToRemove(graph, selected, h)) continue;
-      const value = scoreOf(scored, h);
+      if ((blockers.get(h) ?? 0) > 0) continue;
+      const value = relevance.get(h) ?? 0;
       if (value < worst) { worst = value; victim = h; }
     }
     if (victim === null) break;
     selected.delete(victim);
-    total = totalCost(selected, costs);
+    // The departing node's *outgoing* edges are what vanish, so the counters to
+    // decrement belong to the things it depended on — not to the things that depended
+    // on it. Getting this backwards leaves nodes falsely blocked and the trim stops
+    // early, which is exactly what happened the first time round.
+    for (const t of dependsOn.get(victim) ?? []) {
+      const n = blockers.get(t);
+      if (n !== undefined) blockers.set(t, n - 1);
+    }
+    total -= costs.get(victim) ?? 0;
   }
+
 
   const ordered = [...selected].sort();
   const entries: SliceEntry[] = ordered.map((hash) => {
@@ -189,25 +213,12 @@ export function isClosed(graph: SemanticGraph, selected: ReadonlySet<string>): b
   return true;
 }
 
-/** Can `hash` leave the selection without stranding a dependant? */
-function closureSafeToRemove(graph: SemanticGraph, selected: ReadonlySet<string>, hash: string): boolean {
-  for (const h of selected) {
-    if (h === hash) continue;
-    const deps = graph.byHash(h)?.deps ?? [];
-    if (deps.includes(hash)) return false;
-  }
-  return true;
-}
-
 function totalCost(selected: ReadonlySet<string>, costs: ReadonlyMap<string, number>): number {
   let total = 0;
   for (const h of selected) total += costs.get(h) ?? 0;
   return total;
 }
 
-function scoreOf(scored: readonly Scored[], hash: string): number {
-  return scored.find((s) => s.node.hash === hash)?.relevance ?? 0;
-}
 
 function scoreOfEntry(scored: readonly Scored[], hash: string): Scored {
   const found = scored.find((s) => s.node.hash === hash);
