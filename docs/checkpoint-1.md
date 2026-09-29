@@ -308,6 +308,28 @@ process down, which is a property the interpreter needs regardless of what it is
     corpus that only ever blames the implementation will eventually be "fixed" into
     agreeing with itself.
 
+11. **Two registries of "what methods exist" have been drifting, and the checker loses
+    every time.** The prelude implements methods under `<type>_<name>` keys. The type
+    checker keeps its own hand-written `methodType` switch, per type, with no link to
+    the prelude. A method implemented but not listed is a *false rejection*: a program
+    the runtime executes correctly is refused at compile time with `E0203`.
+
+    `check examples` reports **86 `E0203` and 74 `E0205`** — 160 of 178 — while the
+    interpreter runs 59 of 75 tests in those same files. The comment on the entries that
+    were patched says it outright: *"The interpreter implements these, so a program that
+    uses them is not writing nonsense — the table was simply incomplete."*
+
+    Adding entries one at a time treats the symptom. The two tables need a test that
+    asserts they agree, so the next method added to the prelude fails a build rather
+    than silently becoming a rejection. Such a test cannot be written against the source
+    text — parsing `case` labels out of a switch tests spelling, not behaviour — so
+    `methodType` has to become reachable. It is currently private to `BodyChecker`.
+
+    This is the third time the same shape has appeared here: a duplicated source of
+    truth — `slice.len` versus `elems.length`, the six `want*` accessors, and now the
+    two method registries. **When many programs fail alike, the productive question is
+    "what does this consult?" rather than "what is it doing?"**
+
 ---
 
 ## 7. Next
