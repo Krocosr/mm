@@ -196,6 +196,18 @@ With the model dominating, a tool has to be fast enough that an agent tolerates 
 it will simply not be used — and an unused semantic tool is an experiment that measures
 nothing while looking perfectly healthy.
 
+**Weak tool descriptions were ruled out.** The other explanation for low usage is that
+the agent simply did not know the tools were worth calling. That is not what the
+descriptions say: `mm_slice` is documented as *"A dependency-closed context sized to a
+token budget, for a stated goal… Use instead of reading files to scope a task."* The
+agent was told to prefer it, called it once, and did not call it again. The most
+economical explanation is the eleven-second wait, not a weak prompt.
+
+This is still an inference rather than a controlled result — the honest version of the
+experiment would fix the latency and re-run, which is the next step. But it is a
+prediction with a clear test: if a fast `mm_slice` does not increase `mm_tool_calls`,
+the cause is somewhere else, and the descriptions become the next thing to look at.
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
