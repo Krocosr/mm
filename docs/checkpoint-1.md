@@ -445,6 +445,34 @@ Ordered by what currently blocks a defensible claim, not by effort.
    is left is scattered, and much of it is arguably correct. The registry drift that
    headed this list is closed — 16 false rejections and 31 phantoms to zero, with
    `tests/registry.test.ts` holding both directions shut (§6.11.1).
+
+12. **There is a third registry, and it is the same mistake again.** Having fixed the
+    prelude-versus-`methodType` drift (§6.11), an agent's own `mm_check` call turned up
+    `cannot find function 'pow'`. `pow` is implemented — `abs`, `min`, `max`, `clamp`,
+    `sqrt`, `sum`, `len` and `assert` all are — and none of them can be called by name in
+    checked code.
+
+    The cause is that `builtinFnId` consults a *third* table, `BUILTIN_FNS` in
+    `src/builtins.ts`, which declares seven entries:
+
+    ```
+    shared_new  shared_clone  arena_new  handle_of  usize  bool  char
+    ```
+
+    against roughly twenty-five bare names the prelude actually implements, plus every
+    `<tag>_<name>` method. So a program calling `pow(2, 10)` is refused with
+    `E0203 unknown_function` by a checker sitting next to a working implementation.
+
+    The corpus shows only five such errors, most of them capability builtins that
+    legitimately need a `use` first — which is why the corpus did not surface this. An
+    agent surfaced it in a single run, because an agent writes new code rather than
+    re-running what already exists. **A corpus finds the bugs in the code you wrote; it
+    does not find the bugs in the code you have not written yet.**
+
+    The fix is mechanical — declare the missing builtins with signatures matching the
+    prelude — and the same shape of test as `registry.test.ts` should cover it. It is
+    queued rather than done, because the arms of the experiment were still running.
+
 2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
    individually by cause; `routing_intent` is red on purpose because making it green
    would mean weakening the effect system.
