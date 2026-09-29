@@ -27,11 +27,13 @@ fn char_count(s: Text) -> usize {
     n
 }
 
-// Splits on ASCII whitespace only, which is why UTF-8 stays intact.
+// Splits on ASCII whitespace only, which is why UTF-8 stays intact. The scan runs over
+// characters rather than bytes: `slice` takes character offsets, so a byte offset taken
+// from `as_bytes` would cut a multi-byte character in half.
 fn split_words(s: Text, out: view mut [Text]) -> usize {
-    let bytes = s.as_bytes(); let mut n = 0; let mut start = 0; let mut i = 0;
-    while i < bytes.len() {
-        if is_space(bytes[i]) {
+    let chars = s.chars(); let mut n = 0; let mut start = 0; let mut i = 0;
+    while i < chars.len() {
+        if is_space(chars[i] as u8) {
             if i > start {
                 out[n] = s.slice(start, i);
                 n += 1;
@@ -40,8 +42,8 @@ fn split_words(s: Text, out: view mut [Text]) -> usize {
         };
         i += 1;
     };
-    if start < bytes.len() {
-        out[n] = s.slice(start, bytes.len());
+    if start < chars.len() {
+        out[n] = s.slice(start, chars.len());
         n += 1;
     };
     n
@@ -64,8 +66,8 @@ fn distinct(counts: view Map<Text, u32>) -> usize {
 
 fn max_count(counts: view Map<Text, u32>) -> u32 {
     let mut best: u32 = 0;
-    for entry in counts {
-        if entry.value > best { best = entry.value };
+    for (_, value) in counts {
+        if value > best { best = value };
     };
     best
 }

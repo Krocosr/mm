@@ -122,12 +122,17 @@ exists to set up, and it is the next thing to build.
 
 ## 5. The examples corpus: partial, and improving
 
-`examples/` holds 30 programs and 73 test items. **48 of 73 pass under the interpreter**,
+`examples/` holds 30 programs and 75 test items. **59 of 75 pass under the interpreter**,
 up from 6 of 75 at the first measurement. The permanent suite is 200 tests, 0 failing.
 
-The gap was never thirty independent problems. Nearly every jump came from a single
-*systemic* interpreter defect — a duplicated source of truth, or one accessor in a family
-of six that had been left behind. Ten are recorded here:
+The denominator rose from 73 to 75 because files that previously aborted part-way now
+run to completion and report every item they contain — a file counted as `0/1` because
+it hung is now counted honestly as `2/2` or `0/2`.
+
+The gap was never thirty independent problems. Every jump came from a single *systemic*
+interpreter defect — a duplicated source of truth, an accessor left behind in a family of
+six, or a discriminator weaker than the thing it discriminates. Seventeen are recorded
+here; the last seven were the most productive of the whole exercise:
 
 | Defect | Why it was systemic |
 |---|---|
@@ -141,9 +146,15 @@ of six that had been left behind. Ten are recorded here:
 | Function-valued parameters not callable by name | `fn map_with(.., f: fn(u32) -> u32, ..)` could not call `f(..)`. A whole calling convention was missing. |
 | `slice.len` captured at construction | Every in-place mutator (`push`, `pop`, `insert`) left it stale, so the bounds check rejected indexes that were plainly in range. `E0193` fell from 67 to 3. |
 | `wantText` / `wantBytes` did not `deref` | The other four `want*` accessors did. Any `view Bytes` or `view Text` parameter was rejected by every method on it. |
+| Bare variant names in patterns parsed as bindings | The parser has no type information, so it special-cased the literal `None` only. Every *other* nullary variant became a binding, and a binding matches anything — so the first arm of every `match` over a union swallowed the rest. **The single largest defect: 48 → 51 on its own.** |
+| `findMethod` resolved by name, not receiver type | It scanned for any function named `len`, so an unrelated free `fn len(..)` silently changed what every slice's length was. |
+| `matchPattern` compared the borrow, not through it | A `view T` scrutinee arrived as a cell; neither tag nor payload was visible, so every match fell to the first arm. |
+| `as` was a no-op | `case "cast": return this.eval(expr.operand)` — `b as char` stayed an `int`. |
+| `chars()` yielded `Text` while `s[i]` yielded `char` | Two ways to read the same string disagreed on the element type. |
+| The checker rejected legal `Text` operations | `methodType`'s `Text` table was missing four methods the prelude implements, and `checkBinary` rejected `Text + Text` that the runtime had always allowed — so programs type-checked wrong while running right. |
 
-Three of these produced *silently wrong answers* rather than errors, and the full unit
-suite passed throughout. They were found only by running the corpus.
+Many of these produced *silently wrong answers* rather than errors, and the full unit
+suite passed throughout. Every one of them was found by running the corpus.
 
 ### 5.1 One bug that was not a bug
 
@@ -163,10 +174,20 @@ unverified machinery.
 
 ### 5.2 What is still failing
 
-The remaining failures are individual and need their own diagnosis each. Some — notably
-`routing_intent`, which needs `Decision<T>` and the agent constructs — are missing
-capability rather than defects, and the honest outcome for those is to record them as
-unbuilt rather than weaken the ownership or effect system until they go green.
+Sixteen tests across seven files. They are recorded individually rather than as a count,
+because the useful distinction is *why* each one is red:
+
+| File | Classification | Reason |
+|---|---|---|
+| `routing_intent` | **Unbuilt surface** | `triage` needs `agent, clock, nondet`, which this build grants nothing. Forcing it green would mean weakening the effect system, so it stays red. |
+| `word_count` | **Open bug** | A `Map` written through `view mut` across two successive calls: the second call's insert does not reach the caller's map, though `get` on the same map reads correctly. Narrowed to a reproducer, not yet root-caused. The example was deliberately *not* edited to dodge it. |
+| `json_parser` | Missing surface, unconfirmed | Needs a `Text as_f64` the prelude does not implement. Whether the other two tests depend only on that was not established. |
+| `hash_fnv1a` | Open bug | Returns 36342608335481132 against an expected 3826002220 — a 64-bit value shaped like an untruncated intermediate, so a distinct arithmetic/truncation defect. |
+| `btree_minimal`, `resource_file`, `csv_parse`, `base64` | Open, undiagnosed | Diagnosed as a cluster, not yet root-caused. |
+| `fib_recursive` | Unverified | Aborts on the step budget. Step accounting may simply be too coarse for naive recursion; whether that is a bug or expensive example code was not established. |
+
+Leaving `routing_intent` red is the correct outcome. A corpus that is made green by
+weakening the system it is meant to test is worse than a corpus that reports honestly.
 
 The corpus is not yet a validation that MM runs real programs, and should not be cited as
 though it were.
@@ -225,6 +246,33 @@ process down, which is a property the interpreter needs regardless of what it is
    interpreter failing an incorrect program (§5.1). The instinct on a red test is to
    suspect the system under test; here that instinct would have produced a plausible
    interpreter change that fixed nothing and broke the thing that was already right.
+
+9. **The most productive bug class was a discriminator weaker than identity.** Three
+   separate defects, and the single largest of the whole exercise, were a match or a
+   dispatch that keyed on something vaguer than what it was discriminating:
+
+   - The parser has no type information, so it could only special-case the literal
+     `None`. Every *other* nullary variant — `Nothing`, `Nil`, `Red` — parsed as a
+     binding, and a binding matches anything. The first arm of every `match` over a
+     union therefore swallowed every later arm. This one change moved the corpus from
+     48 to 51.
+   - `findMethod` resolved `xs.len()` by scanning for *any* function named `len`,
+     ignoring the receiver entirely. Declaring an unrelated free `fn len(..)` in a file
+     silently changed what every slice's length was.
+   - `map.get` returned a default rather than distinguishing an absent key from a
+>     stored one, so "missing" and "zero" were the same value.
+
+   A match that cannot fail is a bug that presents as a plausible answer. The tell is
+   that the failure mass clusters on the *first* arm, or on whatever the loosest key
+   happens to be. When many programs fail the same way, ask what the dispatch is keyed
+   on before asking what the code is doing.
+
+10. **Two of the corpus programs were themselves wrong**, in ways worth separating from
+    interpreter defects. `caesar_cipher.mm`'s second test contradicted its own first
+    test — the first proves digits pass through unchanged, the second expected a digit
+    to become `'0'` — and `quicksort.mm` recursed forever on a degenerate partition. A
+    corpus that only ever blames the implementation will eventually be "fixed" into
+    agreeing with itself.
 
 ---
 

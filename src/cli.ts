@@ -11,7 +11,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { buildGraph } from "./graph.ts";
 import { runFn, runTest } from "./interp/interp.ts";
 import { renderPacket } from "./packet.ts";
@@ -76,11 +76,27 @@ export function loadPath(target: string): Program {
 
 interface SourceFileRef { path: string; module: string }
 
+/**
+ * Directories that are never project sources.
+ *
+ * Matched on the directory *name*, not the path, so the rule is the same however the
+ * tree is rooted. Hidden directories are skipped wholesale: a dot-prefixed directory is
+ * by convention tooling state or version-control data, and `.harness/runs/` in
+ * particular is gitignored, which made the semantic graph's contents -- and therefore
+ * its content-hash-derived node ids -- depend on whether a local experiment had been run.
+ */
+const SKIP_DIRS: Record<string, true> = {
+  node_modules: true, scratch: true, dist: true, build: true,
+  target: true, ".cache": true, coverage: true,
+};
+
 function collectSources(target: string): SourceFileRef[] {
   const out: SourceFileRef[] = [];
   const walk = (p: string, root: string): void => {
     const st = statSync(p);
     if (st.isDirectory()) {
+      const name = basename(p);
+      if (p !== root && (name.startsWith(".") || SKIP_DIRS[name] === true)) return;
       for (const entry of readdirSync(p).sort()) walk(join(p, entry), root);
       return;
     }

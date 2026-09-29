@@ -65,6 +65,6 @@ test "shifts letters and wraps the alphabet" {
 
 test "decrypting is the inverse shift" {
     let mut buf: [u8] = [0, 0, 0, 0, 0]; let n = encrypt("BcA-1", 1, buf);
-    assert_eq(to_text(buf, n), "CdB-0"); let mut back: [u8] = [0, 0, 0, 0, 0];
-    let m = decrypt("CdB-0", 1, back); assert_eq(to_text(back, m), "BcA-1")
+    assert_eq(to_text(buf, n), "CdB-1"); let mut back: [u8] = [0, 0, 0, 0, 0];
+    let m = decrypt("CdB-1", 1, back); assert_eq(to_text(back, m), "BcA-1")
 }

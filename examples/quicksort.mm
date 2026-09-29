@@ -22,7 +22,12 @@ fn partition[T: Ord](xs: view mut [T], lo: usize, hi: usize) -> usize {
 }
 
 fn quicksort_range[T: Ord](xs: view mut [T], lo: usize, hi: usize) -> usize {
-    if lo >= hi { return 0 }; let pivot = partition(xs, lo, hi); let left = quicksort_range(xs, lo, pivot);
+    if lo >= hi { return 0 }; let pivot = partition(xs, lo, hi);
+    // Lomuto puts the pivot last when every element in the range is smaller than it, so
+    // `pivot` can land on `hi`. Recursing on `[lo, pivot]` would then hand back the very
+    // range we started with and never terminate. That case is exactly "the tail is
+    // already in place": sort the range below it and treat the pivot as settled.
+    let left = if pivot >= hi { quicksort_range(xs, lo, hi - 1) } else { quicksort_range(xs, lo, pivot) };
     let right = quicksort_range(xs, pivot + 1, hi);
     1 + left + right
 }
