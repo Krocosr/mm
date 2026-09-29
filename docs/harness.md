@@ -238,6 +238,63 @@ calls per run out of 12–32 tool calls. If the fast build does not move that nu
 latency was not the binding constraint and the tool descriptions become the next thing
 to examine.
 
+## 9. The experiment as run confounds three things
+
+The first sweep compared text tools against semantic tools, on MM, on tasks written in
+MM, graded by tests written for MM. The semantic tooling only understands MM. So a win
+for the semantic condition would be partly a fact about the apparatus having been
+co-designed around one language, and the number would not generalise.
+
+Three factors move together and only one is being varied:
+
+| | text tools | semantic tools |
+|---|---|---|
+| **MM** | measured | measured |
+| **Rust** | not measured | not measured |
+
+The fix is a 2x2: hold language and tasks fixed, vary only tooling. That separates "the
+projection format is a better context" from "the language is ours".
+
+### 9.1 The Rust arm is the interesting one, not a concession
+
+Feeding Rust through a syntax parser into the *same* graph shape — reusing `buildSlice`
+and `renderSlice` unchanged — is the experiment with the most information in it:
+
+- If the format carries the benefit, it transfers, and the win is about compact
+  structured context rather than about MM.
+- If it does not, the benefit needs type and ownership awareness rather than a tidy
+  projection. That is the more useful result, and it is only visible if the Rust
+  projection is *weaker* than MM's.
+
+That last point cuts against the obvious instinct. Building an `mm_slice` on Rust as
+capable as MM's would match the co-design advantage and destroy the experiment. A
+syntax-only projection is the point.
+
+### 9.2 What has to be true before the 2x2 is worth building
+
+The four cells are only meaningful if the treatment is actually applied. In the first
+sweep it was not: `mm_slice` was called once in sixteen runs. A 2x2 built on an inert
+treatment would give four cells, two of which are not testing the thing they name.
+
+So the order is: fix the latency (done — §8), re-run the MM arm, and check that
+`mm_tool_calls` actually rises. If it does not, latency was not the binding constraint
+and the tool descriptions are the next thing to look at. Only then is the Rust arm
+worth building.
+
+### 9.3 A within-language ablation that is nearly free
+
+The 2x2 is the right design but it is expensive. One cell is almost free and would
+separate two different claims about the semantic condition:
+
+- `baseline+grep` (current baseline) — semantic tools replace grep
+- `semantic+grep` — semantic tools are *added* to grep
+
+If `semantic+grep` performs like `semantic`, the value is in the tools being present.
+If it performs like `baseline`, then the measured effect is agents choosing grep *over*
+the tools, which is a usability finding rather than a capability one. That needs no
+new tasks and no new language, and it discriminates between two explanations the 2x2
+would otherwise conflate.
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
