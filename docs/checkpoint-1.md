@@ -416,18 +416,30 @@ be the checker disagreeing with a runtime that worked. It is also the clearest a
 for running both continuously: a suite that only exercised the interpreter would never
 have noticed that the *compiler* was refusing correct code 178 times.
 
+**The static guarantees were re-verified after all of it.** Removing 103 rejections is
+exactly the kind of change that can quietly weaken a checker, so the safety corpus was
+re-run: 29 passing, 118 assertions, every program still rejected at its named code, and
+`mm verify` still reports `ok: true`. Fewer errors, same guarantees — every error that
+went was one the runtime disagreed with.
+
+What remains of the 75 is a different kind of work: 9 are the array-versus-slice
+distinction, which the type system makes and the runtime does not (both are `k:"slice"`
+at run time, so no program can rely on it), and the rest are scattered. That distinction
+looks like the next false-rejection class to close, and it belongs to
+`docs/checkpoint-1.md` §7.
+
 ---
 
 ## 7. Next
 
 Ordered by what currently blocks a defensible claim, not by effort.
 
-1. **Close the prelude/checker registry drift.** 16 methods the runtime implements are
-   rejected by the checker, and 19 the checker types are not implemented at all
-   (§6.11). The phantoms are the worse half: a program that typechecks and then fails
-   at run time means the static answer was wrong, which for this project is the one
-   failure that undercuts everything else. `methodType` is now public and
-   `scripts/report-registry-drift.ts` prints the list, so this is mechanical.
+1. **Decide what `[T; N]` means.** The type system distinguishes a fixed-size array from
+   a slice; the runtime represents both as `k:"slice"`, so no program can rely on the
+   difference and the checker's strictness costs 9 false rejections. Either the
+   distinction becomes real in the runtime or it stops being drawn. The registry drift
+   that headed this list is closed — 16 false rejections and 31 phantoms to zero, with
+   `tests/registry.test.ts` holding both directions shut (§6.11.1).
 2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
    individually by cause; `routing_intent` is red on purpose because making it green
    would mean weakening the effect system.
