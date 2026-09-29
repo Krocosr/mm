@@ -349,7 +349,36 @@ process down, which is a property the interpreter needs regardless of what it is
     asserts they agree, so the next method added to the prelude fails a build rather
     than silently becoming a rejection. Such a test cannot be written against the source
     text — parsing `case` labels out of a switch tests spelling, not behaviour — so
-    `methodType` has to become reachable. It is currently private to `BodyChecker`.
+    `methodType` was private to `BodyChecker`; it is now public, and
+    `tests/registry.test.ts` asserts the two registries agree.
+
+    The drift is enumerated rather than estimated.
+    `bun run scripts/report-registry-drift.ts` probes `methodType` for every name either
+    side knows about:
+
+    | | count | meaning |
+    |---|---:|---|
+    | **False rejections** | 16 | the prelude implements it; the checker rejects the call with `E0203` |
+    | **Phantoms** | 19 | the checker types it; the runtime does not implement it |
+
+    | receiver | false rejections | phantoms |
+    |---|---|---|
+    | `text` | `eq`, `lower`, `upper` | `clone`, `is_empty`, `to_upper`, `to_lower`, `trim`, `split` |
+    | `bytes` | `concat`, `eq`, `get`, `set`, `slice` | `clone`, `is_empty`, `to_hex` |
+    | `map` | `get_opt`, `has`, `keys`, `new` | `len`, `contains` |
+    | `set` | `has`, `new`, `remove`, `values` | — |
+    | `array` | — | `contains`, `clone`, `push`, `is_empty`, `pop` |
+
+    Two rows deserve separating. `text` is mostly a **naming** divergence — the prelude
+    spells them `upper` and `lower`, the checker `to_upper` and `to_lower` — so the same
+    intent is registered under two names and a program is refused for using the right
+    one. `map` is not: `get_opt` exists precisely so "absent" and "zero" can be told
+    apart, and the checker does not know it exists.
+
+    **The phantoms are the more dangerous half.** A false rejection is loud: a developer
+    hits it immediately. A phantom typechecks and then fails at run time, which means the
+    static guarantee was quietly wrong — and for a language whose whole argument is that
+    the compiler's answers can be trusted, that is the worse failure of the two.
 
     This is the third time the same shape has appeared here: a duplicated source of
     truth — `slice.len` versus `elems.length`, the six `want*` accessors, and now the
