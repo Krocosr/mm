@@ -427,15 +427,55 @@ on the assumption that agents only touch their own sandbox. In practice:
 `collectSources` now skips dot-directories and `scratch/`, which limits the blast radius,
 but a file written to the repo root is still collected. Enforcing the sandbox is a real
 piece of work; noting the gap is the honest minimum until then.
-### 10.2 What would change the conclusion
 
-- If `semantic_grep` performs like `semantic`, the value is in *removing grep* and the
-  projection is not contributing. That is a real finding and it is not the one claimed.
-- If `semantic_grep` performs like `baseline`, then having the tools is what helps and
-  the agent needs both — which would be a more interesting result, and still not the
-  one the report's framing predicts.
-- Either way, the projection is only shown to earn its cost if some arm actually uses
-  it. Until `mm_slice` is called at all, the token numbers measure the absence of grep.
+### 10.5 Verdict: the experiment as designed cannot measure the claim
+
+The honest summary of 24 runs across three arms:
+
+**What is real.** Semantic tooling exists, loads into a real agent session, and answers
+correctly. A goal-directed slice is **0.166–0.229** the size of the source it replaces
+(exact BPE). The semantic arm passed more often than baseline — 88 % against 63 % — and
+spent fewer input tokens on runs that finished, by both mean and median. None of that
+is nothing.
+
+**What the data does not support.** Three findings each independently block the claim
+the report makes:
+
+1. **The treatment was not applied.** `mm_slice` was called zero times in sixteen runs.
+    Total `mm_*` calls across the whole semantic arm: 13, over eight runs, 0–3 per run.
+    The projection cannot be credited with a token saving it was never asked for.
+2. **The noise floor is larger than the effect.** Two runs of the *same condition on the
+    same task* differ by a median of **2.4×** — and by 11× on `tally/semantic_grep`. The
+    between-condition gap in question was 16 %. A 16 % difference is not distinguishable
+    from a 2.4× run-to-run spread at n = 2. `node .harness/spread.mjs` prints it.
+3. **The measurement is confounded with the language.** Tasks, grader and tooling were
+    all built for MM. Even a clean result would not generalise (§9).
+
+**So the verdict is: unproven, and the experiment is not currently capable of proving
+it.** That is a different statement from "the idea does not work", and the distinction
+matters — nothing here shows the projection is useless. It shows that *this* experiment,
+at this size, on these tasks, with these tools, cannot tell.
+
+### 10.6 What would make it answerable
+
+In rough order of leverage:
+
+1. **Make the agent use the tool, or stop measuring it.** Either the projection becomes
+   the only route to the information — so not using it means failing — or the question is
+   abandoned. Nothing in between produces an interpretable experiment. This is the
+   binding constraint, and no amount of extra repeats fixes it.
+2. **Raise n until the effect clears the noise floor.** The spread is 2.4×, so
+   separating a 16 % difference needs roughly an order of magnitude more runs per cell
+   than we have. That is expensive, and it is only worth paying after (1).
+3. **Hold the language fixed** (§9): run the same arm on Rust with a deliberately weaker
+   projection, so "the projection helps" is separable from "the language is ours".
+4. **Drop the tasks that time out.** Three of sixteen runs hit the 420 s cap, and a
+   timeout is both a failure and an unbounded cost, which forced §9.5's whole correction.
+   A task set where agents reliably finish would remove an axis of variance that has
+   nothing to do with the hypothesis.
+
+The cheapest next measurement is (4), followed by (1). Neither requires new tasks or a
+new language.
 
 ---
 
