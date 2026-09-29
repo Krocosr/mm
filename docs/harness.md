@@ -374,9 +374,35 @@ tools it almost never called**. The likeliest explanation for a 16–25 % contex
 and a higher pass rate is the first of those, not the second — an agent that cannot
 grep reads less, and reads less because it has to, not because it chose a better context.
 
-`semantic_grep` exists to settle that, and it is the experiment that matters now. It
-differs from `semantic` by exactly one tool.
+### 10.3 The tools were advertised on every turn, and ignored
 
+The obvious alternative explanation is discoverability: maybe the agent never saw the
+tools, or never read their descriptions. The event stream rules that out.
+
+Across the eight semantic runs the tool schema is re-sent on every turn, so the
+descriptions appear hundreds of times:
+
+| tool | mentions in the event stream | actual calls |
+|---|---:|---:|
+| `mm_check` | 363 | 13 |
+| `mm_packet` | 36 | 3 |
+| `mm_symbol` | 30 | 2 |
+| `mm_slice` | **15** | **0** |
+| `mm_refs` | 10 | 0 |
+
+`mm_slice`'s description is literally *"Use instead of reading files to scope a task."*
+The agent read that hundreds of times and called it never. So the 218× speedup did not
+fail to be noticed because it was too slow to be noticed: the tools are visible,
+described, and recommended, and the agent reaches for `read` and `bash` anyway.
+
+That is a finding about the design rather than about the benchmark. A projection only
+pays for itself if the agent prefers it to reading the file, and on this task set, with
+this model, it does not. Either the projection becomes the *only* way to get the
+information, or it has to be good enough that choosing it is the obvious move — which
+50 ms and a clear description demonstrably are not.
+
+`semantic_grep` exists to settle the grep question, and it is the experiment that matters
+now. It differs from `semantic` by exactly one tool.
 ### 10.2 What would change the conclusion
 
 - If `semantic_grep` performs like `semantic`, the value is in *removing grep* and the
