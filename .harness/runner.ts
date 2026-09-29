@@ -231,6 +231,19 @@ export interface ConditionSummary {
    * different choice of statistic, which is the whole problem in one number.
    */
   median_input_tokens: number;
+  /**
+   * The same statistics over runs that actually finished.
+   *
+   * A run that hits the wall-clock cap is both a *failure* and an unbounded cost — it
+   * keeps spending tokens until it is killed. Averaging it into the token figure
+   * conflates "what a run costs" with "what a broken run costs before it gives up",
+   * and it is enough on its own to flip the sign of the result: the all-runs mean said
+   * the semantic condition was 26 % cheaper, the median said it was 15 % dearer. Both
+   * numbers are reported so the reader can see which is doing the work.
+   */
+  finished_runs: number;
+  mean_input_tokens_finished: number;
+  median_input_tokens_finished: number;
 }
 
 /** Middle value, or the mean of the two middle values for an even count. */
@@ -248,6 +261,14 @@ const round = (n: number): number => Math.round(n * 100) / 100;
 export interface GradableRun {
   condition: string;
   passed: boolean;
+  /**
+   * True when the agent reached a terminal state inside the time cap.
+   *
+   * Distinct from `passed`: a run can finish and still fail its hidden tests, and a run
+   * that timed out is neither finished nor passed — but it still spent real tokens, and
+   * folding that into a cost average is what made the mean and the median disagree.
+   */
+  finished: boolean;
   input_tokens: number;
   output_tokens: number;
   tool_calls: number;
@@ -275,6 +296,7 @@ export function aggregate(runs: readonly GradableRun[]): ConditionSummary[] {
   for (const [condition, group] of byCondition) {
     const passed = group.filter((r) => r.passed).length;
     const tokens = group.map((r) => r.input_tokens);
+    const done = group.filter((r) => r.finished).map((r) => r.input_tokens);
     out.push({
       condition,
       runs: group.length,
@@ -289,6 +311,9 @@ export function aggregate(runs: readonly GradableRun[]): ConditionSummary[] {
       max_input_tokens: tokens.length === 0 ? 0 : Math.max(...tokens),
       input_tokens_each: tokens.slice().sort((a, b) => a - b),
       median_input_tokens: round(median(tokens)),
+      finished_runs: done.length,
+      mean_input_tokens_finished: round(mean(done)),
+      median_input_tokens_finished: round(median(done)),
     });
   }
   return out.sort((a, b) => a.condition.localeCompare(b.condition));
@@ -736,7 +761,7 @@ async function main(argv: readonly string[]): Promise<number> {
     conditions: conditions.map((c) => ({ id: c.id, tools: c.tools, extension: c.extension, label: c.label })),
     runs: records,
     by_condition: aggregate(records.map((r) => ({
-      condition: r.condition, passed: false,
+      condition: r.condition, passed: false, finished: r.ok,
       input_tokens: r.input_tokens, output_tokens: r.output_tokens,
       tool_calls: r.tool_calls, seconds: r.seconds,
     }))),

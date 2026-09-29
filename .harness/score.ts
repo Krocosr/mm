@@ -153,6 +153,7 @@ async function gradeRun(opts: {
     condition: run.condition,
     repeat: run.repeat,
     passed: false,
+    finished: run.ok,
     input_tokens: run.input_tokens,
     output_tokens: run.output_tokens,
     tool_calls: run.tool_calls,
@@ -378,6 +379,17 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   for (const s of byCondition) {
     console.log(`  ${s.condition} per-run in_tok: ${s.input_tokens_each.join(", ")}`);
+  }
+
+  console.log("\n  finished runs only — a timeout burns tokens without producing an answer,");
+  console.log("  so folding it into a cost average measures failure, not efficiency.");
+  console.log(`  ${"condition".padEnd(14)}${"runs".padStart(6)}${"mean".padStart(11)}${"median".padStart(13)}`);
+  for (const s of byCondition) {
+    console.log(
+      `  ${s.condition.padEnd(14)}${String(s.finished_runs).padStart(6)}` +
+      `${s.mean_input_tokens_finished.toFixed(0).padStart(11)}` +
+      `${s.median_input_tokens_finished.toFixed(0).padStart(13)}`,
+    );
   }
   console.log(`\nresults: ${join(opts.runsDir, "results.json")}`);
   return 0;

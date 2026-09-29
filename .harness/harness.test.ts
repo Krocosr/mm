@@ -175,8 +175,8 @@ describe("parseEvents", () => {
 // ---------------------------------------------------------------------------
 
 describe("aggregate", () => {
-  const run = (condition: string, passed: boolean, input: number, calls: number, seconds = 10) => ({
-    condition, passed, input_tokens: input, output_tokens: 1, tool_calls: calls, seconds,
+  const run = (condition: string, passed: boolean, input: number, calls: number, seconds = 10, finished = true) => ({
+    condition, passed, finished, input_tokens: input, output_tokens: 1, tool_calls: calls, seconds,
   });
 
   test("computes pass rate and mean input tokens per condition", () => {
@@ -193,12 +193,14 @@ describe("aggregate", () => {
         mean_input_tokens: 200, mean_output_tokens: 1,
         mean_tool_calls: 10, mean_seconds: 10,
         min_input_tokens: 100, max_input_tokens: 300, input_tokens_each: [100, 300], median_input_tokens: 200,
+        finished_runs: 2, mean_input_tokens_finished: 200, median_input_tokens_finished: 200,
       },
       {
         condition: "semantic", runs: 2, finished: 2, passed: 2, pass_rate: 1,
         mean_input_tokens: 100, mean_output_tokens: 1,
         mean_tool_calls: 4, mean_seconds: 10,
         min_input_tokens: 50, max_input_tokens: 150, input_tokens_each: [50, 150], median_input_tokens: 100,
+        finished_runs: 2, mean_input_tokens_finished: 100, median_input_tokens_finished: 100,
       },
     ]);
   });
@@ -333,11 +335,22 @@ const CONDITIONS = JSON.parse(await Bun.file(join(HARNESS, "conditions.json")).t
 };
 const CONDITION_BY_ID = Object.fromEntries(CONDITIONS.conditions.map((c) => [c.id, c]));
 
-describe("the two conditions differ in tool set and nothing else", () => {
+describe("the conditions differ in tool set and nothing else", () => {
   const byId = CONDITION_BY_ID;
 
-  test("conditions.json declares exactly baseline and semantic", () => {
-    expect(Object.keys(byId).sort()).toEqual(["baseline", "semantic"]);
+  test("conditions.json declares the two arms plus the ablation", () => {
+    // The ablation is the third arm: semantic tools *and* grep. It is what separates
+    // "the tools are present" from "the tools beat grep" — the first sweep could not
+    // tell those apart, and neither can a two-arm comparison.
+    expect(Object.keys(byId).sort()).toEqual(["baseline", "semantic", "semantic_grep"]);
+  });
+
+  test("the ablation differs from semantic by exactly one tool", () => {
+    const sem = byId.semantic!.tools.split(",").filter((t) => t !== "grep");
+    const both = byId.semantic_grep!.tools.split(",");
+    expect(both.filter((t) => t !== "grep").sort()).toEqual([...sem].sort());
+    expect(both).toContain("grep");
+    expect(byId.semantic_grep!.extension).toBe(byId.semantic!.extension);
   });
 
   test("baseline gets the text tools, including grep", () => {
