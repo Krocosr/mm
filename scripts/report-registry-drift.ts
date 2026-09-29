@@ -18,7 +18,7 @@ import { BUILTIN, type Ty } from "../src/types.ts";
 
 const RECEIVERS: { prefix: string; ty: Ty }[] = [
   { prefix: "slice", ty: { k: "slice", elem: { k: "prim", name: "u8" } } },
-  { prefix: "array", ty: { k: "array", elem: { k: "prim", name: "u8" } } },
+  { prefix: "array", ty: { k: "array", elem: { k: "prim", name: "u8" }, len: 0 } },
   { prefix: "text", ty: { k: "named", def: BUILTIN.Text_, args: [] } },
   { prefix: "bytes", ty: { k: "named", def: BUILTIN.Bytes_, args: [] } },
   { prefix: "map", ty: { k: "named", def: BUILTIN.Map, args: [{ k: "prim", name: "u8" }, { k: "prim", name: "u8" }] } },
@@ -30,9 +30,23 @@ const program = new Program();
 program.addFile({ module: "drift_probe", text: "", bytes: new TextEncoder().encode("") });
 const body = new BodyChecker(new Checker(program));
 
-// Every method name the checker answers for a receiver, discovered by probing the whole
-// prelude vocabulary plus the names the spec's kernel documents. Probing a fixed list
+// Every method name the checker might answer for a receiver, discovered by probing the
+// whole prelude vocabulary plus the names the language documents. Probing a fixed list
 // cannot prove absence in general; it pins the ones we know about.
+/**
+ * Methods the prelude provides *for a receiver*, by `<tag>_<name>` key.
+ *
+ * Deliberately not counting bare builtins. `evalMethod` does fall back to a bare
+ * `<name>`, so `s.min()` would dispatch at run time — but `min` is a free function, not
+ * a method on `Text`, and treating that fallback as an implementation turns every
+ * builtin into a method on every type, which makes the question meaningless. The
+ * fallback is an untyped escape hatch, and the checker being stricter than it is the
+ * safe direction to be wrong in.
+ */
+function implementedFor(prefix: string): string[] {
+  return BUILTIN_NAMES.filter((n) => n.startsWith(`${prefix}_`)).map((n) => n.slice(prefix.length + 1));
+}
+
 const CANDIDATES = new Set<string>([
   ...BUILTIN_NAMES.flatMap((n) => n.split("_").slice(1)),
   "len", "is_empty", "get", "set", "insert", "remove", "contains", "keys", "values",
@@ -45,7 +59,7 @@ let falseRejections = 0;
 let phantomMethods = 0;
 
 for (const { prefix, ty } of RECEIVERS) {
-  const implemented = BUILTIN_NAMES.filter((n) => n.startsWith(`${prefix}_`)).map((n) => n.slice(prefix.length + 1));
+  const implemented = implementedFor(prefix);
   const known = [...CANDIDATES].filter((m) => body.methodType(ty, m, NO_SPAN) !== null);
 
   const missing = implemented.filter((m) => !known.includes(m));
