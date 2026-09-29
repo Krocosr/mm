@@ -208,6 +208,36 @@ experiment would fix the latency and re-run, which is the next step. But it is a
 prediction with a clear test: if a fast `mm_slice` does not increase `mm_tool_calls`,
 the cause is somewhere else, and the descriptions become the next thing to look at.
 
+### 8. Fixed: `mm_slice` is now 50.6 ms, and the fix was found by the scale test
+
+The trim loop now keeps the outgoing edges of every selected node and, from them, an
+incoming count. A node may leave when its count is zero, and leaving decrements the
+counts of the nodes it *depended on*.
+
+> **The first attempt was wrong in a way only the tests caught.** The decrement was
+> applied to the nodes the departing node *blocked* rather than the nodes it *depended
+> on* — the same edge, read backwards. It compiled, it was principled, and it was 218x
+> faster. But it left 112 nodes falsely blocked, so the trim stopped at 6 165 tokens
+> instead of reaching the 800-token budget. The timing test passed; the budget test
+> failed. Fixing the direction made `blockersMismatch` zero against a from-scratch
+> recomputation.
+
+| | before | after |
+|---|---:|---:|
+| `mm_slice` (build + render), median | 11 040.9 ms | **50.6 ms** |
+| vs a corpus grep | 5 493x slower | 33x slower |
+| test suite wall clock | 49 s | 3.3 s |
+
+The suite timing is the more honest number, because it includes everything the single
+benchmark does not: the trim loop runs on every slice in every test.
+
+**What this does and does not establish.** `mm_slice` at 50 ms is comfortably usable.
+Whether agents now *use* it is a separate, falsifiable question, and the first sweep
+gave the baseline for it: `mm_slice` was called once in sixteen runs, with 1–4 `mm_*`
+calls per run out of 12–32 tool calls. If the fast build does not move that number, the
+latency was not the binding constraint and the tool descriptions become the next thing
+to examine.
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
