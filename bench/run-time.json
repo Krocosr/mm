@@ -1,0 +1,134 @@
+{
+  "rows": [
+    {
+      "run": "bitfield/baseline/1",
+      "condition": "baseline",
+      "wall_s": 35.09,
+      "model_s": 25.7,
+      "other_s": 9.4,
+      "other_pct": 27,
+      "turns": 6,
+      "mean_model_ms": 4290
+    },
+    {
+      "run": "bitfield/baseline/2",
+      "condition": "baseline",
+      "wall_s": 51.82,
+      "model_s": 44,
+      "other_s": 7.9,
+      "other_pct": 15,
+      "turns": 10,
+      "mean_model_ms": 4396
+    },
+    {
+      "run": "bitfield/semantic/1",
+      "condition": "semantic",
+      "wall_s": 65.74,
+      "model_s": 55.6,
+      "other_s": 10.2,
+      "other_pct": 15,
+      "turns": 13,
+      "mean_model_ms": 4275
+    },
+    {
+      "run": "bitfield/semantic/2",
+      "condition": "semantic",
+      "wall_s": 68.56,
+      "model_s": 57.9,
+      "other_s": 10.6,
+      "other_pct": 16,
+      "turns": 20,
+      "mean_model_ms": 2896
+    },
+    {
+      "run": "checkdigit/baseline/1",
+      "condition": "baseline",
+      "wall_s": 79.52,
+      "model_s": 70.9,
+      "other_s": 8.7,
+      "other_pct": 11,
+      "turns": 15,
+      "mean_model_ms": 4723
+    },
+    {
+      "run": "slot_pool/baseline/1",
+      "condition": "baseline",
+      "wall_s": 332.34,
+      "model_s": 312.1,
+      "other_s": 20.2,
+      "other_pct": 6,
+      "turns": 58,
+      "mean_model_ms": 5381
+    },
+    {
+      "run": "slot_pool/baseline/2",
+      "condition": "baseline",
+      "wall_s": 164.42,
+      "model_s": 145.8,
+      "other_s": 18.6,
+      "other_pct": 11,
+      "turns": 32,
+      "mean_model_ms": 4556
+    },
+    {
+      "run": "slot_pool/semantic/1",
+      "condition": "semantic",
+      "wall_s": 129.32,
+      "model_s": 117,
+      "other_s": 12.3,
+      "other_pct": 10,
+      "turns": 20,
+      "mean_model_ms": 5849
+    },
+    {
+      "run": "slot_pool/semantic/2",
+      "condition": "semantic",
+      "wall_s": 102.15,
+      "model_s": 103.8,
+      "other_s": 0,
+      "other_pct": 0,
+      "turns": 16,
+      "mean_model_ms": 6487
+    },
+    {
+      "run": "tally/baseline/1",
+      "condition": "baseline",
+      "wall_s": 180.03,
+      "model_s": 121.2,
+      "other_s": 58.8,
+      "other_pct": 33,
+      "turns": 23,
+      "mean_model_ms": 5270
+    },
+    {
+      "run": "tally/baseline/2",
+      "condition": "baseline",
+      "wall_s": 57.19,
+      "model_s": 50.6,
+      "other_s": 6.6,
+      "other_pct": 12,
+      "turns": 11,
+      "mean_model_ms": 4600
+    },
+    {
+      "run": "tally/semantic/1",
+      "condition": "semantic",
+      "wall_s": 116.31,
+      "model_s": 146.6,
+      "other_s": 0,
+      "other_pct": 0,
+      "turns": 28,
+      "mean_model_ms": 4071
+    },
+    {
+      "run": "tally/semantic/2",
+      "condition": "semantic",
+      "wall_s": 218.67,
+      "model_s": 208.5,
+      "other_s": 10.2,
+      "other_pct": 5,
+      "turns": 23,
+      "mean_model_ms": 9065
+    }
+  ]
+}

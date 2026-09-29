@@ -176,6 +176,26 @@ recorded below were taken against this slow build, so they understate what a fix
 `mm_slice` would make possible — and the fix must land before the result is quoted as
 anything but a floor.
 
+**The cost was masked, not absent.** `omp` reports `duration` on every `message_end`,
+which is the model's own inference time. Subtracting it from the run's wall clock gives
+everything that was not the model thinking (`bun run scripts/summarize-time.ts`):
+
+| condition | runs | mean wall | mean model | mean non-model |
+|---|---:|---:|---:|---:|
+| baseline | 7 | 128.6 s | 110.0 s | 18.6 s (16 %) |
+| semantic | 6 | 116.8 s | 114.9 s | 7.2 s (8 %) |
+
+Runs are 86–94 % model inference. So an eleven-second `mm_slice` does not show up in
+wall time at all — not because it is fast, but because **it was called once in thirteen
+runs**. The moment agents actually use the tool, that column moves. Semantic runs
+currently spend *less* non-model time than baseline runs, which is what a toolset that
+is present but unused looks like.
+
+The practical consequence for the design: tool latency is not a secondary metric here.
+With the model dominating, a tool has to be fast enough that an agent tolerates it, or
+it will simply not be used — and an unused semantic tool is an experiment that measures
+nothing while looking perfectly healthy.
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
