@@ -14,7 +14,7 @@
  * Usage: `bun runner.ts --tasks a,b --conditions baseline,semantic --repeats 2 --timeout 600`
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
@@ -63,6 +63,15 @@ export interface RunRecord {
   model: string;
   started_at: string;
   error?: string;
+  /**
+   * Top-level repository entries that appeared during this run.
+   *
+   * The sandbox is advisory: the loader is kept outside every `work/` by placement, but
+   * an agent can still write elsewhere in the tree, and one did — a `.mm` file at the
+   * repo root, which a later `mm check .` would collect. Recording the strays on the run
+   * that caused them is the difference between a known gap and an unexplained file.
+   */
+  stray_files?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +79,8 @@ export interface RunRecord {
 // ---------------------------------------------------------------------------
 
 const HARNESS = resolve(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")));
+/** The repository root — the tree an agent can still reach outside its `work/` dir. */
+const MM_ROOT = resolve(HARNESS, "..");
 const TASKS_DIR = join(HARNESS, "tasks");
 const RUNS_DIR = join(HARNESS, "runs");
 const CONDITIONS_FILE = join(HARNESS, "conditions.json");
@@ -709,6 +720,15 @@ async function main(argv: readonly string[]): Promise<number> {
     }
   }
 
+/** Top-level entries of a directory, for spotting writes that escaped the sandbox. */
+function topLevel(dir: string): string[] {
+  try {
+    return readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+}
+
   const records: RunRecord[] = [];
   for (const task of tasks) {
     for (const condition of conditions) {
@@ -724,6 +744,12 @@ async function main(argv: readonly string[]): Promise<number> {
           continue;
         }
         console.log(`  ${task.id}/${condition.id}/${repeat}: running…`);
+        // The sandbox is advisory: the loader is outside every `work/` by placement, but
+        // nothing stops an agent writing elsewhere in the tree, and one did — a `.mm`
+        // file at the repo root, which a later `mm check .` would collect. Snapshot the
+        // top level so a stray is recorded on the run that made it rather than being
+        // discovered later as an unexplained file.
+        const before = topLevel(MM_ROOT);
         // One run blowing up must not abort the sweep: a long sweep is expected to hit
         // transient failures, and losing every later run to the first exception throws
         // away work that was already paid for. The failure is recorded instead.
@@ -742,6 +768,13 @@ async function main(argv: readonly string[]): Promise<number> {
             JSON.stringify(rec, null, 2) + "\n",
             "utf8",
           );
+        }
+        const strays = topLevel(MM_ROOT).filter((f) => !before.includes(f));
+        if (strays.length > 0) {
+          // Recorded, not deleted: a file an agent wrote outside its sandbox is evidence
+          // about the agent, and quietly cleaning it up would hide the gap.
+          rec.stray_files = strays;
+          console.log(`      wrote outside work/: ${strays.join(", ")}`);
         }
         records.push(rec);
         console.log(
