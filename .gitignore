@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+
+# Harness run artifacts: every agent invocation copies a working tree and an
+# NDJSON event log per run. Regenerate with `bun .harness/runner.ts`; the task
+# definitions themselves under .harness/tasks/ ARE tracked.
+.harness/runs/
+.harness/selftest/
+.harness/smoke/
+
+# Throwaway parser/type experiments. The directory is disposable by name and the
+# files remain on disk; they are just not part of the project's history.
+scratch/

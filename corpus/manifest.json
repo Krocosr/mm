@@ -1,0 +1,205 @@
+{
+  "version": 1,
+  "spec": "docs/spec/kernel.md#9",
+  "notes": [
+    "FR-1: the safe suite is the counterweight. A model that rejects everything is not a model.",
+    "`stage: runtime` means the program MUST compile cleanly and fail at run time with the named code.",
+    "`rationale` states what specifically makes the program unsafe, or what makes the safe pattern legitimately accepted."
+  ],
+  "entries": [
+    {
+      "file": "safety/use_after_free.mm",
+      "case": "use_after_free",
+      "expect": "reject",
+      "code": "E0413",
+      "stage": "compile",
+      "rationale": "`v = view buf` is live at `read_len(v)`, but `drop(buf)` ends the owner's region first. R-Own-3: a view is valid only within the region of the place it was derived from."
+    },
+    {
+      "file": "safety/double_free.mm",
+      "case": "double_free",
+      "expect": "reject",
+      "code": "E0417",
+      "stage": "compile",
+      "rationale": "`Conn` is `@resource(close = fs.close)`, so it has a drop path. `let b = a` moves it; dropping `b` runs the close, and `drop(a)` then runs it a second time on an already-released handle."
+    },
+    {
+      "file": "safety/iterator_invalidation.mm",
+      "case": "iterator_invalidation",
+      "expect": "reject",
+      "code": "E0414",
+      "stage": "compile",
+      "rationale": "`r = view xs` is a live read borrow of the slice when `xs.push(1.0)` writes through the same place. R-Own-4 forbids overlapping read/exclusive regions."
+    },
+    {
+      "file": "safety/mutable_read_alias.mm",
+      "case": "mutable_read_alias",
+      "expect": "reject",
+      "code": "E0414",
+      "stage": "compile",
+      "rationale": "`b: view mut Grid` is exclusively borrowed for the whole call to `fill`, and `r = a` aliases that same place with a read view whose last use is after the call."
+    },
+    {
+      "file": "safety/arena_escape.mm",
+      "case": "arena_escape",
+      "expect": "reject",
+      "code": "E0415",
+      "stage": "compile",
+      "rationale": "`first_of` returns `view Node` derived from a parameter `arena Node`. The bump allocation is bounded by the callee's region, so the reference cannot escape; R-Own-7 requires a `handle` conversion instead."
+    },
+    {
+      "file": "safety/stale_handle.mm",
+      "case": "stale_handle",
+      "expect": "reject",
+      "code": "E0416",
+      "stage": "runtime",
+      "rationale": "R-Own-8: `handle` deref is a checked generational load, not a static proof. `pool.free(h)` bumps the generation, so reading `h` after the slot is reused is the kernel's one intentional run-time ownership check. The program must compile without error."
+    },
+    {
+      "file": "safety/cross_thread_mutable_alias.mm",
+      "case": "cross_thread_mutable_alias",
+      "expect": "reject",
+      "code": "E0420",
+      "stage": "compile",
+      "rationale": "`m` is a `view mut` moved into `spawn move`, while `s = view g` is a live read borrow of the same place in the parent task. The exclusive view would exist concurrently on two threads."
+    },
+    {
+      "file": "safety/partial_init_drop.mm",
+      "case": "partial_init_drop",
+      "expect": "reject",
+      "code": "E0419",
+      "stage": "compile",
+      "rationale": "`Session` is `@resource(close = fs.close)` and its `fd` field is bound from a fallible expression. Dropping on the failure path would run `close` against the uninitialized field; §6.5 requires the drop elaboration to run only initialized fields."
+    },
+    {
+      "file": "safety/int_to_ptr.mm",
+      "case": "int_to_ptr",
+      "expect": "reject",
+      "code": "E0430",
+      "stage": "compile",
+      "rationale": "`addr as *mut u8` performs an integer-to-pointer conversion in safe code. Only an `unsafe[rawptr]` context may mint a raw pointer; in safe code the `usize` has no provenance and the deref is unsound."
+    },
+    {
+      "file": "safety/bad_ffi_contract.mm",
+      "case": "bad_ffi_contract",
+      "expect": "reject",
+      "code": "E0703",
+      "stage": "compile",
+      "rationale": "A-4: `@resource(close = f)` requires `f`'s parameter type to match the resource's handle type. `close_path` takes a `Text` while `File`'s handle type is `Handle<fd>`, so the generated drop path would pass a handle where foreign code reads a path."
+    },
+    {
+      "file": "safety/decision_as_authority.mm",
+      "case": "decision_as_authority",
+      "expect": "reject",
+      "code": "E0601",
+      "stage": "compile",
+      "rationale": "§4.5 trust monotonicity: a `Decision<Approval>` is a typed but untrusted nondeterministic value. Passing it where a `Verified<Approval>` is required to act on a `Cap<bank.transfer>` is a promotion with no `verify` step."
+    },
+    {
+      "file": "safety/cap_from_value.mm",
+      "case": "cap_from_value",
+      "expect": "reject",
+      "code": "E0602",
+      "stage": "compile",
+      "rationale": "§6.3 capability non-escalation: `Cap<E>` may appear only as a parameter type, in a struct field, or in a `!{E}`-carrying function that receives it from its caller. Returning one from a classifier score is an illegal position; a `Cap` is unconstructible from any value."
+    },
+    {
+      "file": "safe/nested_reborrow.mm",
+      "case": "nested_reborrow",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "The inner `view p` region is strictly nested inside the outer's, and the outer view is only read. §3.5 step 4 widening is not needed; this is the borrowck-hard case Rust accepts."
+    },
+    {
+      "file": "safe/sequential_exclusive_borrows.mm",
+      "case": "sequential_exclusive_borrows",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "The first `view mut` borrow's region ends at its last use inside `bump`, before the second borrow is created. Non-overlapping exclusive borrows of one owner are legal under R-Own-4."
+    },
+    {
+      "file": "safe/loop_borrow_not_carried.mm",
+      "case": "loop_borrow_not_carried",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "`it` is live at the end of each iteration but is a fresh binding per iteration, not carried across. §3.5 region inference makes the per-iteration regions disjoint."
+    },
+    {
+      "file": "safe/return_from_block.mm",
+      "case": "return_from_block",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "The block constructs an owned `Config`; nothing viewable into block state is returned. The block's region ends at the return point."
+    },
+    {
+      "file": "safe/move_field_out.mm",
+      "case": "move_field_out",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "Partial moves of a record are sound: `label(p)` moves the `Text` field, and `years(p)` reads a `Copy` field of the partially moved value. No view of the moved field is live."
+    },
+    {
+      "file": "safe/shared_graph_walk.mm",
+      "case": "shared_graph_walk",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "A `shared` graph is refcounted, so the recursive walk re-borrows an RC handle rather than an exclusive one. R-Own-6 makes this legal; only the RC atomicity choice differs."
+    },
+    {
+      "file": "safe/shared_clone_branches.mm",
+      "case": "shared_clone_branches",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "`clone` on a `shared` is an RC operation, not a move, and the two clones live in mutually exclusive branches, so their regions never overlap."
+    },
+    {
+      "file": "safe/for_over_view_mut.mm",
+      "case": "for_over_view_mut",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "The `normalize` shape from the smoke fixture: the read borrow taken by `sum(xs)` ends before the `for` loop takes the exclusive borrow, and the loop mutates only through it."
+    },
+    {
+      "file": "safe/early_return_with_resource.mm",
+      "case": "early_return_with_resource",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "R-Own-9: drop runs at end of region, exactly once, including on early return. `f` is `@resource`, so the `return 0` path closes it once — that is the specified behavior, not a double free."
+    },
+    {
+      "file": "safe/match_move_and_borrow.mm",
+      "case": "match_move_and_borrow",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "Only one `match` arm executes, so the arm that moves the `Text` payload and the arm that borrows the whole value never have overlapping regions."
+    },
+    {
+      "file": "safe/arena_to_handle.mm",
+      "case": "arena_to_handle",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "R-Own-7: the arena value is used freely inside its region and the reference is converted to a checked generational `handle` at the boundary, which is the one legal escape."
+    },
+    {
+      "file": "safe/result_explicit_map.mm",
+      "case": "result_explicit_map",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "`?` propagates `Err`; the explicit `map_err` converts `NetErr` to `IoErr` at the propagation site. The `?` operator never invents an error type, so differing `Err` types are fine."
+    },
+    {
+      "file": "safe/sequential_moves.mm",
+      "case": "sequential_moves",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "`consume(t)` moves the owned `Token` exactly once; the source region ends at the call and the destination is dropped once. This is the baseline R-Own-1 case."
+    },
+    {
+      "file": "safe/two_readers_one_writer.mm",
+      "case": "two_readers_one_writer",
+      "expect": "accept",
+      "stage": "compile",
+      "rationale": "The `for r in rows` write borrow ends at the end of the loop, so the `total(rows)` read borrow that follows it does not overlap any live exclusive region."
+    }
+  ]
+}

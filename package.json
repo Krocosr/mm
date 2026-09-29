@@ -1,0 +1,21 @@
+{
+  "name": "mm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MM — an agent-first systems language. Minimize representational waste, maximize verified semantic information per token.",
+  "bin": {
+    "mm": "./src/cli.ts",
+    "mmd": "./src/mmd.ts"
+  },
+  "scripts": {
+    "test": "bun test tests",
+    "tokens": "bun run scripts/measure-tokens.ts examples",
+    "check": "tsc --noEmit",
+    "mm": "bun run src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.6.0"
+  }
+}

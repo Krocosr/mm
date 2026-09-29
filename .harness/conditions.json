@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Tool-name provenance. The two conditions differ ONLY in --tools; model, system",
+    "prompt, task prompt and work dir are identical, so any difference in tokens or",
+    "pass rate is attributable to the tool set.",
+    "",
+    "How the names were determined:",
+    "1. `omp --help` (v18.4.3) lists the built-in tool names, and an unknown name is a",
+    "   hard startup error, so --tools is validated against this exact vocabulary.",
+    "2. Reading omp-extension/mm.ts: the exported `TOOLS` array names the eight semantic",
+    "   tools mm_check, mm_symbol, mm_refs, mm_type, mm_slice, mm_packet, mm_system,",
+    "   mm_verify. Those are the names the daemon verbs in TOOL_TO_VERB are keyed by.",
+    "3. Verified by invocation: `omp --tools=read,grep,bash,edit,write ...` starts and",
+    "   streams events, so the baseline list is valid.",
+    "",
+    "The extension must be loaded with -e for the mm_* names to resolve. An extension",
+    "registers tools by exporting a default factory taking the ExtensionAPI and calling",
+    "pi.registerTool({ name, ... }); the semantic list below names the tools that",
+    "omp-extension/mm.ts declares."
+  ],
+  "conditions": [
+    {
+      "id": "baseline",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "label": "text tools"
+    },
+    {
+      "id": "semantic",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/omp-extension/mm.ts",
+      "label": "semantic tools"
+    }
+  ]
+}
