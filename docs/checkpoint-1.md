@@ -389,15 +389,23 @@ process down, which is a property the interpreter needs regardless of what it is
 
 ## 7. Next
 
-1. Run the agent sweep to completion and record the verdict. The harness is built and
-   verified end to end; see `harness.md`. Until the sweep lands, §3 is a measurement of
-   context size and nothing more. The report is explicit that a large context reduction
-   paired with any drop in task success is not a win, so the comparison cannot be called
-   a result until both axes exist.
-2. Finish the example corpus — 48 of 73, from 6. This is the difference between
-   "compiles" and "works", and it is the last thing standing between the language and a
-   defensible claim that it runs real programs.
-3. `mmd` and the OMP extension are now driven by a real headless agent session, with
-   `mm_symbol` and `mm_check` returning live daemon output in `toolResults`. See
-   `harness.md` §1 for the load defect that had to be fixed first, and §2 for a case
-   where the shipped OMP documentation is contradicted by the installed binary.
+Ordered by what currently blocks a defensible claim, not by effort.
+
+1. **Close the prelude/checker registry drift.** 16 methods the runtime implements are
+   rejected by the checker, and 19 the checker types are not implemented at all
+   (§6.11). The phantoms are the worse half: a program that typechecks and then fails
+   at run time means the static answer was wrong, which for this project is the one
+   failure that undercuts everything else. `methodType` is now public and
+   `scripts/report-registry-drift.ts` prints the list, so this is mechanical.
+2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
+   individually by cause; `routing_intent` is red on purpose because making it green
+   would mean weakening the effect system.
+3. **Re-run the ablation.** The `semantic_grep` condition now exists to separate "the
+   tools are present" from "the tools beat grep". The first sweep could not tell those
+   apart, and neither can the 2x2 in `harness.md` §9.
+4. **Build the Rust arm**, so the comparison is not confounded with the language being
+   ours (`harness.md` §9.1). Deliberately a *weaker* projection than MM's, or the
+   experiment is not measuring what it claims to.
+5. **Do not attempt the native spine without saying so loudly.** It is the largest
+   remaining piece of the original plan, it has not been started, and until it is, the
+   report's "C-class native execution" is untested rather than supported (§4.1).
