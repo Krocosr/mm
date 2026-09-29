@@ -403,6 +403,30 @@ information, or it has to be good enough that choosing it is the obvious move �
 
 `semantic_grep` exists to settle the grep question, and it is the experiment that matters
 now. It differs from `semantic` by exactly one tool.
+
+### 10.4 The sandbox is advisory, not enforced
+
+During the fast-build sweep a `repro.mm` appeared at the **repository root** — a correct
+fixed version of the `slot_pool` fixture, all four of its tests passing. It was an
+agent's scratch file, written outside the run's `work/` directory.
+
+The guarantee that actually matters held: the loader lives at `.harness/loader/`,
+outside every `work/`, so the agent under test cannot edit the tool it is being measured
+on. But nothing *prevents* an agent from writing elsewhere in the tree — it can reach the
+repo root with an absolute path, and it did.
+
+This is worth stating rather than fixing quietly, because the experiment's validity rests
+on the assumption that agents only touch their own sandbox. In practice:
+
+- the loader is safe by placement, not by sandbox;
+- agents can and do write outside `work/`, so a post-sweep `git status` is part of the
+  harness's own hygiene, not an optional check;
+- a stray file left at the repo root is also a *false positive* waiting to happen — had
+  it been a `.mm` file, a later `mm check .` would have picked it up.
+
+`collectSources` now skips dot-directories and `scratch/`, which limits the blast radius,
+but a file written to the repo root is still collected. Enforcing the sandbox is a real
+piece of work; noting the gap is the honest minimum until then.
 ### 10.2 What would change the conclusion
 
 - If `semantic_grep` performs like `semantic`, the value is in *removing grep* and the
