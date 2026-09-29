@@ -230,12 +230,15 @@ process down, which is a property the interpreter needs regardless of what it is
 
 ## 7. Next
 
-1. Build the agent-run harness and measure the success rate the report requires. Until
-   that exists, §3 is a measurement of context size and nothing more. The report is
-   explicit that a large context reduction paired with any drop in task success is not a
-   win, so the comparison cannot be called a result until both axes exist.
+1. Run the agent sweep to completion and record the verdict. The harness is built and
+   verified end to end; see `harness.md`. Until the sweep lands, §3 is a measurement of
+   context size and nothing more. The report is explicit that a large context reduction
+   paired with any drop in task success is not a win, so the comparison cannot be called
+   a result until both axes exist.
 2. Finish the example corpus — 48 of 73, from 6. This is the difference between
    "compiles" and "works", and it is the last thing standing between the language and a
    defensible claim that it runs real programs.
-3. `mmd` and the OMP extension are built and tested over a real pipe, but have not been
-   driven by an actual agent session yet. The harness is what will do that.
+3. `mmd` and the OMP extension are now driven by a real headless agent session, with
+   `mm_symbol` and `mm_check` returning live daemon output in `toolResults`. See
+   `harness.md` §1 for the load defect that had to be fixed first, and §2 for a case
+   where the shipped OMP documentation is contradicted by the installed binary.
