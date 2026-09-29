@@ -334,6 +334,61 @@ looping until it was killed.
 
 ---
 
+## Results
+
+The fast-build sweep: 4 tasks × 2 conditions × 2 repeats, `cl100k_base` and
+`freeflow/space-bunny-free`, 16 runs.
+
+| condition | runs | passed | pass rate | mean in_tok | median in_tok | range | mm calls |
+|---|---:|---:|---:|---:|---:|---|---:|
+| baseline | 8 | 5 | 63 % | 13 806 | 12 284 | 4 457–27 792 | 0 |
+| semantic | 8 | 7 | **88 %** | 10 469 | 10 674 | 3 882–17 988 | 13 |
+
+Restricting to runs that reached a terminal state, which is the comparison §9.5 says is
+the honest one:
+
+| condition | finished | mean in_tok | median in_tok |
+|---|---:|---:|---:|
+| baseline | 6 | 11 822 | 12 284 |
+| semantic | 7 | **9 964** | **9 163** |
+
+On finished runs the two statistics **agree**, which they did not when timeouts were
+folded in: the semantic condition is 16 % cheaper by mean and 25 % by median, and passes
+more often. That is the shape the report's hypothesis predicts.
+
+### 10.1 But the saving cannot be attributed to the semantic tools
+
+This is the finding that governs how much any of the above is worth.
+
+`mm_slice` was called **zero times** in sixteen runs. Total `mm_*` invocations across the
+whole semantic arm: 13, over eight runs, ranging from 0 to 3 per run.
+
+The prediction recorded in §8 was explicit — if the fast build did not move usage,
+latency was not the binding constraint and the descriptions were next. It did not move
+usage, and `mm_slice` actually went *down*, from one call on the 11-second build to none
+on the 50 ms build. So the tool was made 218× faster and the agents used it less.
+
+Which means the comparison above is not measuring semantic tooling. The semantic arm
+differed from baseline in two ways at once: it **lost `grep`** and it **gained eight
+tools it almost never called**. The likeliest explanation for a 16–25 % context saving
+and a higher pass rate is the first of those, not the second — an agent that cannot
+grep reads less, and reads less because it has to, not because it chose a better context.
+
+`semantic_grep` exists to settle that, and it is the experiment that matters now. It
+differs from `semantic` by exactly one tool.
+
+### 10.2 What would change the conclusion
+
+- If `semantic_grep` performs like `semantic`, the value is in *removing grep* and the
+  projection is not contributing. That is a real finding and it is not the one claimed.
+- If `semantic_grep` performs like `baseline`, then having the tools is what helps and
+  the agent needs both — which would be a more interesting result, and still not the
+  one the report's framing predicts.
+- Either way, the projection is only shown to earn its cost if some arm actually uses
+  it. Until `mm_slice` is called at all, the token numbers measure the absence of grep.
+
+---
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
