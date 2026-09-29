@@ -739,8 +739,13 @@ export class BodyChecker {
         return this.checkBuiltinCall(expr.args, expr.span, qualified, bid);
       }
     }
-    const baseTy = deepResolve(deepUnown(this.checkExpr(expr.base, undefined)));
-    const t = this.methodType(baseTy, expr.name, expr.span);
+    // Resolve twice: once keeping the ownership wrapper, once without. `deepUnown` is
+    // right for most lookups — a method should see the underlying value type — but it
+    // erases exactly the fact that tells a handle from any other named type, so every
+    // `h.index()` was rejected on `type#5` with no way to tell what `h` was.
+    const owned = deepResolve(this.checkExpr(expr.base, undefined));
+    const baseTy = deepResolve(deepUnown(owned));
+    const t = this.methodType(owned, expr.name, expr.span) ?? this.methodType(baseTy, expr.name, expr.span);
     if (!t) {
       for (const a of expr.args) this.checkExpr(a, undefined);
       c.error("E0203", "unknown_method", `no method \`${expr.name}\` on \`${renderish(baseTy)}\``, expr.nameSpan);
@@ -913,6 +918,20 @@ export class BodyChecker {
         case "is_empty": return { params: [], ret: { k: "prim", name: "bool" } };
         case "get": return { params: [{ k: "prim", name: "usize" }], ret: { k: "option", inner: base.elem } };
         case "push": return { params: [base.elem], ret: TY_UNIT };
+        default: return null;
+      }
+    }
+    // A handle is `{k:"own", ownership:"handle", inner}`. The prelude dispatches these
+    // through `handle_*` keys, and this table was missing the `own` receiver entirely,
+    // so every call on a handle was rejected — 39 of the E0203s the corpus still
+    // reported. `renderish` printed such a receiver as the bare word `type`, which is
+    // what made the messages read as nonsense rather than as a missing table.
+    if (base.k === "own" && base.ownership === "handle") {
+      switch (name) {
+        case "index": return { params: [], ret: { k: "prim", name: "usize" } };
+        case "generation": return { params: [], ret: { k: "prim", name: "u32" } };
+        case "is_null": return { params: [], ret: { k: "prim", name: "bool" } };
+        case "is_live": return { params: [], ret: { k: "prim", name: "bool" } };
         default: return null;
       }
     }
