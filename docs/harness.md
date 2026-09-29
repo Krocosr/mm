@@ -43,6 +43,7 @@ because the bug is in a case the seed does not exercise.
 | `tally` | data structure | linear probe never wraps, so a key whose run falls off the end reads as absent |
 | `checkdigit` | text/serialization | Luhn doubling keyed off the leftmost digit instead of the string's length parity |
 
+
 Each was verified in both directions — fails on the seed, passes on a reference fix — and
 `.harness/tasks/README.md` carries a runnable recipe so that claim can be re-checked
 without trusting the harness.
@@ -135,6 +136,45 @@ Two of the first-draft hidden tests asserted the wrong values, and both conditio
 for that reason. Identical failure across conditions is the signature of a bad fixture
 rather than a real effect, and it cost two sweep cycles. Every fixture is now verified in
 both directions before it is used.
+
+### 7. `mm_slice` was ~5 500x slower than a grep, and the semantic condition cannot work
+###    until that is fixed
+
+The token experiment assumes the semantic tools are *usable*. That assumption deserved a
+number, and the number is bad. Measured over the 30-file example corpus, median of nine
+samples after warmup (`bun run scripts/measure-tool-latency.ts examples`):
+
+| Operation | Median |
+|---|---:|
+| `mm_symbol` (x40, batched) | 0.0 ms |
+| `mm_refs` (x40, batched) | 0.0 ms |
+| `mm_type` (x40, batched) | 0.0 ms |
+| read the 21 source files a broad slice covers | 1.1 ms |
+| grep across 30 files | 2.0 ms |
+| reload: parse + check + graph over 30 files | 212.5 ms |
+| **`mm_slice` (build + render)** | **11 040.9 ms** |
+
+Every *other* semantic tool is sub-millisecond, so the semantic graph itself is fast. The
+whole cost is in `buildSlice`'s budget-trimming loop, and it is algorithmic:
+
+- `closureSafeToRemove` answered "does anything still selected depend on this node?" by
+  rescanning the entire selection and doing a linear `deps.includes` — once per
+  candidate, once per removal.
+- `scoreOf` did a linear `scored.find(...)` per candidate.
+- `totalCost` re-summed the whole selection after every removal.
+- The outer loop runs once per removed node.
+
+That is cubic in the size of the selection, and eleven seconds is what a few thousand
+selected nodes costs. The answer to "is anything still selected depending on this node"
+is a *count*, and the count can be maintained as nodes leave; the total can be
+decremented rather than recomputed.
+
+**Why this matters more than the number.** An agent that calls `mm_slice` waits eleven
+seconds. It will route around a tool that slow, and if both conditions end up using text
+tools then the token comparison is between two identical conditions. The semantic runs
+recorded below were taken against this slow build, so they understate what a fixed
+`mm_slice` would make possible — and the fix must land before the result is quoted as
+anything but a floor.
 
 ## Honest limits
 
