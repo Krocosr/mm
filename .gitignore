@@ -12,3 +12,7 @@ dist/
 # Throwaway parser/type experiments. The directory is disposable by name and the
 # files remain on disk; they are just not part of the project's history.
 scratch/
+
+# The first (slow-build) sweep, preserved as the floor the mm_slice fix improved on.
+# 12 MB of per-run work trees; regenerable, and its summary is what matters.
+.harness-runs-slowbuild/
