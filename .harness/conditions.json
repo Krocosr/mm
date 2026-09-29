@@ -46,7 +46,13 @@
       "id": "semantic",
       "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
       "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
-      "label": "semantic tools"
+      "label": "semantic tools, no grep"
+    },
+    {
+      "id": "semantic_grep",
+      "tools": "read,grep,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "label": "semantic tools AND grep (ablation)"
     }
   ]
 }
