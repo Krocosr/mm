@@ -53,6 +53,14 @@ const CANDIDATES = new Set<string>([
   "new", "push", "pop", "clone", "to_upper", "to_lower", "trim", "split", "concat",
   "starts_with", "ends_with", "as_bytes", "bytes", "chars", "slice", "to_hex", "eq",
   "is_some", "is_none", "unwrap", "unwrap_or", "take", "map", "is_ok", "is_err", "ok", "err", "map_err",
+  // The rest of the names `methodType` switches on. Without these the report silently
+  // undercounts phantoms, which is the more dangerous direction: an unprobed method
+  // reads as agreement nobody actually checked.
+  "first", "last", "clear", "iter", "reverse", "sort",
+  // Multi-word builtin keys do not survive the split above: `map_get_opt` contributes
+  // "get" and "opt", never "get_opt", so a method with an underscore in its name is
+  // invisible to the probe unless it is named here.
+  "get_opt",
 ]);
 
 let falseRejections = 0;

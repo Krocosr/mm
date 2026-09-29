@@ -892,57 +892,60 @@ export class BodyChecker {
    * Public so that test can reach it. The only other caller is `checkMethod`.
    */
   methodType(base: Ty, name: string, span: Span): { params: Ty[]; ret: Ty } | null {
-    if (base.k === "slice" || base.k === "array") {
+    // Each table below mirrors the prelude's `<tag>_<name>` builtins for that receiver,
+    // exactly — no more and no less. An entry the prelude does not implement is a
+    // phantom: the program typechecks and then fails at run time, which is the one
+    // failure this project cannot afford, because it means the compiler's answer was
+    // wrong. `tests/registry.test.ts` asserts the two agree in both directions.
+    // A slice and a fixed-size array are separate receivers with separate builtin keys
+    // (`slice_*` and `array_*`), so they get separate tables. Sharing one would type
+    // `push` on an array, which has no `array_push` to dispatch to.
+    if (base.k === "array") {
+      switch (name) {
+        case "len": return { params: [], ret: { k: "prim", name: "usize" } };
+        case "get": return { params: [{ k: "prim", name: "usize" }], ret: { k: "option", inner: base.elem } };
+        default: return null;
+      }
+    }
+    if (base.k === "slice") {
       switch (name) {
         case "len": return { params: [], ret: { k: "prim", name: "usize" } };
         case "is_empty": return { params: [], ret: { k: "prim", name: "bool" } };
         case "get": return { params: [{ k: "prim", name: "usize" }], ret: { k: "option", inner: base.elem } };
-        case "first": return { params: [], ret: { k: "option", inner: base.elem } };
-        case "last": return { params: [], ret: { k: "option", inner: base.elem } };
         case "push": return { params: [base.elem], ret: TY_UNIT };
-        case "pop": return { params: [], ret: { k: "option", inner: base.elem } };
-        case "clear": return { params: [], ret: TY_UNIT };
-        case "iter": return { params: [], ret: { k: "named", def: BUILTIN.Stream, args: [base.elem] } };
-        case "contains": return { params: [base.elem], ret: { k: "prim", name: "bool" } };
-        case "reverse": return { params: [], ret: TY_UNIT };
-        case "sort": return { params: [], ret: TY_UNIT };
-        case "clone": return { params: [], ret: base };
         default: return null;
       }
     }
     if (base.k === "named" && base.def === BUILTIN.Text_) {
       switch (name) {
         case "len": return { params: [], ret: { k: "prim", name: "usize" } };
-        case "is_empty": return { params: [], ret: { k: "prim", name: "bool" } };
         case "concat": return { params: [base], ret: base };
+        case "contains": return { params: [base], ret: { k: "prim", name: "bool" } };
         case "starts_with": return { params: [base], ret: { k: "prim", name: "bool" } };
         case "ends_with": return { params: [base], ret: { k: "prim", name: "bool" } };
-        case "to_upper": return { params: [], ret: base };
-        case "to_lower": return { params: [], ret: base };
-        case "trim": return { params: [], ret: base };
-        case "split": return { params: [base], ret: { k: "named", def: BUILTIN.Stream, args: [base] } };
-        case "contains": return { params: [base], ret: { k: "prim", name: "bool" } };
-        // The interpreter implements these, so a program that uses them is not writing
-        // nonsense -- the table was simply incomplete. `chars` yields `char` values, the
-        // same thing `s[i]` produces, and `slice` takes a start and an optional end, both
-        // in bytes, exactly as `text_slice` does.
+        case "eq": return { params: [base], ret: { k: "prim", name: "bool" } };
+        // `upper` and `lower`, not `to_upper`/`to_lower`: the prelude spells them without
+        // the prefix, and the checker is the registry that follows the implementation
+        // rather than the other way round.
+        case "upper": return { params: [], ret: base };
+        case "lower": return { params: [], ret: base };
+        // `chars` yields `char` values, the same thing `s[i]` produces, and `slice` takes
+        // a start and an end in bytes, exactly as `text_slice` does.
         case "as_bytes": return { params: [], ret: { k: "named", def: BUILTIN.Bytes_, args: [] } };
         case "bytes": return { params: [], ret: { k: "slice", elem: { k: "prim", name: "u8" } } };
         case "chars": return { params: [], ret: { k: "slice", elem: { k: "prim", name: "char" } } };
-        case "slice": return {
-          params: [{ k: "prim", name: "usize" }, { k: "prim", name: "usize" }],
-          ret: base,
-        };
-        case "clone": return { params: [], ret: base };
+        case "slice": return { params: [{ k: "prim", name: "usize" }, { k: "prim", name: "usize" }], ret: base };
         default: return null;
       }
     }
     if (base.k === "named" && base.def === BUILTIN.Bytes_) {
       switch (name) {
         case "len": return { params: [], ret: { k: "prim", name: "usize" } };
-        case "is_empty": return { params: [], ret: { k: "prim", name: "bool" } };
-        case "to_hex": return { params: [], ret: { k: "named", def: BUILTIN.Text_, args: [] } };
-        case "clone": return { params: [], ret: base };
+        case "get": return { params: [{ k: "prim", name: "usize" }], ret: { k: "option", inner: { k: "prim", name: "u8" } } };
+        case "set": return { params: [{ k: "prim", name: "usize" }, { k: "prim", name: "u8" }], ret: TY_UNIT };
+        case "slice": return { params: [{ k: "prim", name: "usize" }, { k: "prim", name: "usize" }], ret: base };
+        case "concat": return { params: [base], ret: base };
+        case "eq": return { params: [base], ret: { k: "prim", name: "bool" } };
         default: return null;
       }
     }
@@ -972,21 +975,27 @@ export class BodyChecker {
     if (base.k === "named" && base.def === BUILTIN.Map) {
       switch (name) {
         // Total: a miss reads as the value type's zero. `get_opt` is the `Opt` form, so
-        // the distinction stays expressible where it actually matters.
+        // the distinction stays expressible where it actually matters — which is why
+        // the checker must know it exists.
         case "get": return { params: [base.args[0] ?? TY_ERR], ret: base.args[1] ?? TY_ERR };
         case "get_opt": return { params: [base.args[0] ?? TY_ERR], ret: { k: "option", inner: base.args[1] ?? TY_ERR } };
+        case "has": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
         case "insert": return { params: [base.args[0] ?? TY_ERR, base.args[1] ?? TY_ERR], ret: TY_UNIT };
-        case "len": return { params: [], ret: { k: "prim", name: "usize" } };
-        case "contains": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
         case "remove": return { params: [base.args[0] ?? TY_ERR], ret: { k: "option", inner: base.args[1] ?? TY_ERR } };
+        case "keys": return { params: [], ret: { k: "slice", elem: base.args[0] ?? TY_ERR } };
+        case "new": return { params: [], ret: base };
         default: return null;
       }
     }
     if (base.k === "named" && base.def === BUILTIN.Set) {
       switch (name) {
         case "insert": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
+        case "has": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
         case "contains": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
+        case "remove": return { params: [base.args[0] ?? TY_ERR], ret: { k: "prim", name: "bool" } };
+        case "values": return { params: [], ret: { k: "slice", elem: base.args[0] ?? TY_ERR } };
         case "len": return { params: [], ret: { k: "prim", name: "usize" } };
+        case "new": return { params: [], ret: base };
         default: return null;
       }
     }
