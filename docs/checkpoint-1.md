@@ -109,14 +109,48 @@ The report is explicit that a token saving means nothing without the success rat
 
 > A 70 % context reduction that creates a 20 % success-rate reduction is not a win.
 
-**Not run:** the fourth condition, *semantic tools* (the agent querying the graph live
-rather than receiving a batched packet), and the **task success rate** across all four
-conditions. Both require running the same model against the same fixed task set with a
-scoring harness. Neither is estimated anywhere in this repository.
+**Not run at the time of writing:** the fourth condition, *semantic tools* (the agent
+querying the graph live rather than receiving a batched packet), and the **task success
+rate** across conditions. Both require running the same model against the same fixed task
+set with a scoring harness. The harness now exists and is described in `harness.md`; the
+verdict is in `harness.md` §Results.
 
 So the honest reading of §3 is: **the context reduction is real and measured; whether it
-converts into successful agent work is untested.** That is the experiment this checkpoint
-exists to set up, and it is the next thing to build.
+converts into successful agent work is a separate question answered elsewhere.**
+
+### 4.1 Native performance: unmeasured, and currently unmeasurable
+
+The design report's headline is "C-class native execution", and its benchmark matrix has
+a row for it:
+
+> | Custom backend | LLVM versus MM-native | correctness and native performance |
+> C should not be used as a straw man. C, Rust, MM-LLVM, and where appropriate MM-Cranelift
+> should compile with comparable optimization settings.
+
+**That benchmark has not been run and cannot be run yet.** There is no code generator in
+this repository. MM compiles to an HIR, a semantic graph and a bytecode-like
+interpretation, all in TypeScript on Bun — there is no MM-LLVM and no MM-Cranelift to
+compare against anything.
+
+So the claim is **untested, not disproven**. And any performance number produced today
+would be measuring Bun's JIT on a tree-walking interpreter, which says nothing about MM
+as a systems language. Quoting one would be worse than quoting nothing, because it would
+look like the benchmark the report asked for.
+
+Two consequences worth stating plainly:
+
+- The native spine — MIR, an LLVM or Cranelift backend, incremental compilation — was
+  never started. It is the single largest piece of the original plan and it remains
+  entirely ahead.
+- Routing accuracy, ECE and routing latency are also unmeasurable, because `Decision<T>`
+  and the agent/decision surface are unimplemented. That is the same gap that leaves
+  `examples/routing_intent.mm` red (§5.2).
+
+What *is* measured on the agent side, because it is measurable today: wall-clock seconds
+per run, input/output/cache-read token counts, tool-call counts broken down by tool name,
+and the count of `mm_*` tool invocations per condition. The token metric in §3 is a
+static projection under `cl100k_base`; the harness metric is provider-reported input
+tokens. **They are different quantities and are never combined.**
 
 ---
 
