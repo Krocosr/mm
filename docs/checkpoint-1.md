@@ -417,7 +417,7 @@ for running both continuously: a suite that only exercised the interpreter would
 have noticed that the *compiler* was refusing correct code 178 times.
 
 
-**`check examples`: 178 → 82 errors.** The suite is 210 passing, 0 failing, and the
+**`check examples`: 178 → 78 errors.** The suite is 210 passing, 0 failing, and the
 example corpus is unchanged at 59/75.
 
 **The static guarantees were re-verified after every step.** Loosening a checker is
@@ -432,6 +432,24 @@ the runtime did not, is resolved. What is left is scattered, and much of it is
 legitimately an error — a function whose tail does not match its declared return, an
 empty array whose element type cannot be inferred, a `?` propagating into a `Result` that
 is not there.
+
+### 11.2 The one false rejection left in this family
+
+`let h = Handle::at(index, p.gen)` — with no type annotation — cannot be checked. A
+handle constructor's element type appears in neither argument: `Handle::at` names a slot,
+and what it produces is a handle to whatever the caller expects. The interpreter knows
+because the value carries its own type at run time; the checker has only the annotation,
+and there is none.
+
+Three sites in the corpus, and three in the fixtures. The fix is bidirectional
+inference — thread a `let`'s enclosing expected type into its initializer as a hint —
+and that is a real inference change, not a lookup. Done carelessly it over-constrains:
+in `let mut n = 0; let mut i = 0;` inside a function returning `usize`, both bindings
+would adopt `i64` from context and the subsequent comparisons would break.
+
+So it is recorded rather than landed. The cost of the gap is three false rejections; the
+cost of the careless fix is a checker that rejects ordinary code, which is the exact
+failure this section has been about.
 
 ---
 
