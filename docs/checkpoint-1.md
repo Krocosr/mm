@@ -406,7 +406,7 @@ all, and they were worth more:
 | `Bytes` and `Text` indexing rejected, though `indexOf` has always accepted both | 28 | The message said `builtin#-12 cannot be indexed` — a builtin id, not a type name, so it did not look like a rule about a type anyone had heard of. |
 | Both variant resolvers guarded on `t.form !== "choice"`, but `TypeDef` never produces `"choice"` — it is `"union"` | 20 | `checkEnumVariantValue` was dead code. Its comment described the qualified `Ident.variant` form, so it read as a deliberate narrow rule rather than a guard that never matched. |
 
-**`check examples`: 178 → 75 errors.** The suite is 210 passing, 0 failing, and the
+**`check examples`: 178 → 78 errors.** The suite is 210 passing, 0 failing, and the
 example corpus is unchanged at 59/75 — which is the point. Every one of these was a
 *false rejection*: the interpreter ran the program. The corpus pass count did not move
 because the corpus measures the interpreter, and none of these bugs were in it.
@@ -426,7 +426,7 @@ after each: 29 passing, 118 assertions, every program still rejected at its name
 `mm verify` still `ok: true`, 212 tests 0 failing. Fewer errors, same guarantees — every
 error that went was one the runtime disagreed with.
 
-What remains of the 82 is a different kind of work, and that is the point: the largest
+What remains of the 78 is a different kind of work, and that is the point: the largest
 single cluster is 2. The array-versus-slice distinction, which the type system drew and
 the runtime did not, is resolved. What is left is scattered, and much of it is
 legitimately an error — a function whose tail does not match its declared return, an
@@ -525,7 +525,7 @@ Ordered by what currently blocks a defensible claim, not by effort.
     carries a discipline, is judged exactly as before, so this cannot launder a genuinely
     wrong type into a match.
 
-    **`check examples`: 264 → 82.** The trajectory reads oddly, and that is the lesson:
+    **`check examples`: 264 → 78.** The trajectory reads oddly, and that is the lesson:
     67 before the test pass, 264 immediately after it, 82 once the false rejections the
     pass exposed were fixed. A count that goes *up* when you fix a real hole is not a
     regression; it is the hole being measured for the first time. The largest remaining
