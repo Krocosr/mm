@@ -92,6 +92,15 @@ Provenance is recorded in `bench/tokens.json`: every row carries its tokenizer i
 vocabularies. When `js-tiktoken` was absent, the tool reported that it was unavailable
 rather than silently falling back to the heuristic.
 
+**Reproduced on demand.** The figure above was re-derived after the example corpus had
+grown from 42 to 48 passing programs, and came back identical: 23 132 / 6 600 / 0.2853.
+
+That reproduction also showed why the exact tokenizer matters. Run without the tokenizer
+argument the tool falls back to a character-density heuristic, which reports
+`R_token = 0.2028` — the same direction, but a **29 % smaller saving** than the real one.
+The heuristic does not merely add noise, it changes the size of the effect being claimed.
+Any future number quoted from this repository must name its tokenizer.
+
 ---
 
 ## 4. What was NOT measured
