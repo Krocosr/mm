@@ -295,6 +295,19 @@ the tools, which is a usability finding rather than a capability one. That needs
 new tasks and no new language, and it discriminates between two explanations the 2x2
 would otherwise conflate.
 
+### 9.4 The prompts do not leak the treatment
+
+Checked, because it would be an easy way to manufacture a result. Every `prompt.txt`
+describes the defect in domain terms only — the fields, the dispatcher, the wrong
+header — and contains no occurrence of `mm_`, `slice`, `semantic`, or `grep`. The
+baseline and semantic agents are handed byte-identical task text; the only difference
+between them is the tool set, which is the treatment.
+
+What the agents *are* told differs, necessarily: OMP's system prompt enumerates the
+active tools, so the semantic agent knows the semantic tools exist. That is the
+treatment, not a leak — withholding it would be testing a hidden feature rather than an
+available one.
+
 ## Honest limits
 
 - **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
