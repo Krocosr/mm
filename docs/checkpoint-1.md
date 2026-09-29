@@ -416,7 +416,10 @@ be the checker disagreeing with a runtime that worked. It is also the clearest a
 for running both continuously: a suite that only exercised the interpreter would never
 have noticed that the *compiler* was refusing correct code 178 times.
 
-**The static guarantees were re-verified after all of it.** Removing 103 rejections is
+**`check examples`: 178 → 67 errors.** The suite is 210 passing, 0 failing, and the
+example corpus is unchanged at 59/75.
+
+**The static guarantees were re-verified after all of it.** Removing 111 rejections is
 exactly the kind of change that can quietly weaken a checker, so the safety corpus was
 re-run: 29 passing, 118 assertions, every program still rejected at its named code, and
 `mm verify` still reports `ok: true`. Fewer errors, same guarantees — every error that
@@ -434,11 +437,13 @@ looks like the next false-rejection class to close, and it belongs to
 
 Ordered by what currently blocks a defensible claim, not by effort.
 
-1. **Decide what `[T; N]` means.** The type system distinguishes a fixed-size array from
-   a slice; the runtime represents both as `k:"slice"`, so no program can rely on the
-   difference and the checker's strictness costs 9 false rejections. Either the
-   distinction becomes real in the runtime or it stops being drawn. The registry drift
-   that headed this list is closed — 16 false rejections and 31 phantoms to zero, with
+1. **The remaining 67 errors deserve a pass, but the shape has changed.** They are no
+   longer a cluster — the largest single shape is now 3. The array-versus-slice
+   distinction is resolved: a fixed-size array and a slice are the same value at run
+   time, both `k:"slice"`, so the type system was drawing a line nothing could enforce,
+   and enforcing it cost 8 false rejections. `unify` now compares them as slices. What
+   is left is scattered, and much of it is arguably correct. The registry drift that
+   headed this list is closed — 16 false rejections and 31 phantoms to zero, with
    `tests/registry.test.ts` holding both directions shut (§6.11.1).
 2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
    individually by cause; `routing_intent` is red on purpose because making it green
