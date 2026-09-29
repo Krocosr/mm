@@ -178,8 +178,24 @@ anything but a floor.
 
 ## Honest limits
 
+- **The treatment was barely applied, so the sweep does not yet test the hypothesis.**
+  This is the most important limit and it is not a caveat at the margin. Across the six
+  semantic runs, total `mm_*` calls per run were between 1 and 4, out of 12 to 32 total
+  tool calls. `mm_slice` — the flagship tool, and the one the report's design is built
+  around — was invoked **once in the entire sweep**. The semantic condition was, in
+  practice, "text tools plus a brief semantic check". Any token difference between the
+  conditions is therefore mostly a difference between two agents doing nearly the same
+  thing, and it cannot be read as a measurement of semantic tooling.
+
+  The most likely cause is finding 7: a tool that takes eleven seconds gets used once.
+  The fix has to land, and the sweep has to be re-run, before this experiment says
+  anything about whether the design works.
+
 - **n is small.** The sweep is 4 tasks × 2 conditions × 2 repeats. That supports a
   direction, not a significance claim. No p-value is reported and none should be.
+- **Within-condition spread is comparable to the between-condition gap.** Observed input
+  tokens within a single condition ranged from 1 911 to 6 930. A mean over two runs is
+  not a measurement, which is why the scorer prints min–max beside it.
 - **One model, one provider, one prompt shape.** Nothing here establishes that the result
   transfers to a different model.
 - **The tasks are synthetic.** They were written against this codebase and this
