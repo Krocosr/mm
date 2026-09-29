@@ -416,20 +416,22 @@ be the checker disagreeing with a runtime that worked. It is also the clearest a
 for running both continuously: a suite that only exercised the interpreter would never
 have noticed that the *compiler* was refusing correct code 178 times.
 
-**`check examples`: 178 → 67 errors.** The suite is 210 passing, 0 failing, and the
+
+**`check examples`: 178 → 82 errors.** The suite is 210 passing, 0 failing, and the
 example corpus is unchanged at 59/75.
 
-**The static guarantees were re-verified after all of it.** Removing 111 rejections is
-exactly the kind of change that can quietly weaken a checker, so the safety corpus was
-re-run: 29 passing, 118 assertions, every program still rejected at its named code, and
-`mm verify` still reports `ok: true`. Fewer errors, same guarantees — every error that
-went was one the runtime disagreed with.
+**The static guarantees were re-verified after every step.** Loosening a checker is
+exactly the kind of change that can quietly weaken it, so the safety corpus was re-run
+after each: 29 passing, 118 assertions, every program still rejected at its named code,
+`mm verify` still `ok: true`, 212 tests 0 failing. Fewer errors, same guarantees — every
+error that went was one the runtime disagreed with.
 
-What remains of the 75 is a different kind of work: 9 are the array-versus-slice
-distinction, which the type system makes and the runtime does not (both are `k:"slice"`
-at run time, so no program can rely on it), and the rest are scattered. That distinction
-looks like the next false-rejection class to close, and it belongs to
-`docs/checkpoint-1.md` §7.
+What remains of the 82 is a different kind of work, and that is the point: the largest
+single cluster is 2. The array-versus-slice distinction, which the type system drew and
+the runtime did not, is resolved. What is left is scattered, and much of it is
+legitimately an error — a function whose tail does not match its declared return, an
+empty array whose element type cannot be inferred, a `?` propagating into a `Result` that
+is not there.
 
 ---
 
@@ -469,9 +471,47 @@ Ordered by what currently blocks a defensible claim, not by effort.
     re-running what already exists. **A corpus finds the bugs in the code you wrote; it
     does not find the bugs in the code you have not written yet.**
 
-    The fix is mechanical — declare the missing builtins with signatures matching the
-    prelude — and the same shape of test as `registry.test.ts` should cover it. It is
-    queued rather than done, because the arms of the experiment were still running.
+    The fix is to declare the missing builtins with signatures matching the prelude, in a
+    **separate table**. They cannot go in `BUILTIN_FNS`, because the two have opposite
+    shadowing rules: a capability builtin must win over a user function, or a program
+    could shed the effect it was about to request, but a pure builtin must lose, because
+    `evalCall` resolves the user function first. Adding `sum` to the authority table and
+    checking builtins first made a program's own `fn sum(xs: view [f32])` fail against its
+    own call sites — which is how the split was found.
+
+13. **The compiler was not checking its own test bodies, which is how it hid two bugs.**
+    `checkAllFns` iterates `program.allFns()`, and `test` items are not in it. A `test`
+    block containing an undefined name, or a `let s: i64 = "not an int"`, checked clean.
+
+    This is not a marginal gap. Every `assert_eq` in the example corpus lives inside a
+    `test` block, so **the corpus's assertions had never been type-checked at all** — and
+    the corpus looked clean precisely because the calls that would have exposed finding
+    12 were the ones nobody was checking. A pure-builtin call was refused by the checker
+    and accepted by the interpreter for the whole life of the project without anyone
+    noticing, because the only place it was called from was inside a test body.
+
+    `checkAllTests` now walks `program.tests`, giving each body one scope frame — a test
+    has no parameter frame, but it does need the module's consts and types, which live in
+    the scope `checkDeclarations` seeded. Both entry points (`src/check.ts` and
+    `src/cli.ts`) call it, so the CLI and the daemon cannot disagree about it.
+
+14. **A `view` parameter was a borrow, and the checker and the runtime disagreed about
+    what satisfies one.** With test bodies checked, 198 call sites appeared rejecting a
+    plain argument for a `view` / `view mut` parameter. The interpreter has always lent
+    the place: `argFor` turns the argument into a borrow over the caller's place, so
+    `peek(s)` binds a view of `s` and `insert(s, 11)` mutates through it. The checker
+    demanded an explicit borrow that no program in the corpus writes.
+
+    The fix compares the borrowed type against the argument's own type, and only for
+    view parameters — a parameter that is not a borrow, or an argument that already
+    carries a discipline, is judged exactly as before, so this cannot launder a genuinely
+    wrong type into a match.
+
+    **`check examples`: 264 → 82.** The trajectory reads oddly, and that is the lesson:
+    67 before the test pass, 264 immediately after it, 82 once the false rejections the
+    pass exposed were fixed. A count that goes *up* when you fix a real hole is not a
+    regression; it is the hole being measured for the first time. The largest remaining
+    cluster is 2.
 
 2. **Finish the example corpus** — 59 of 75, from 6 (§5). Sixteen tests remain, recorded
    individually by cause; `routing_intent` is red on purpose because making it green
