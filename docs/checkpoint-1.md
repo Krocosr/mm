@@ -25,7 +25,9 @@ Every number below is reproducible with the commands shown. Nothing here is esti
 | Semantic graph, packets, slices | `src/graph.ts`, `src/packet.ts`, `src/slice.ts` | Complete |
 | Query layer, CLI, daemon, OMP extension | `src/query.ts`, `src/cli.ts`, `src/mmd.ts`, `omp-extension/mm.ts` | Complete |
 
-**Verification.** `bun test tests` → **194 passing, 0 failing**. `tsc --noEmit` → clean.
+**Verification.** `bun test tests` → **205 passing, 0 failing**. `bunx tsc --noEmit` → clean.
+`bun test tests/corpus.test.ts` → 29 passing, 118 assertions, covering both the safety
+corpus (each rejected at its named code) and the false-rejection suite.
 
 ---
 
@@ -111,28 +113,54 @@ exists to set up, and it is the next thing to build.
 
 ## 5. The examples corpus: partial, and improving
 
-`examples/` holds 30 programs and 73 test items. **42 of 73 pass under the interpreter**,
-up from 6 of 75 at the first measurement.
+`examples/` holds 30 programs and 73 test items. **48 of 73 pass under the interpreter**,
+up from 6 of 75 at the first measurement. `bun test tests` → 205 passing, 0 failing.
 
-The gap was not thirty independent problems. Six interpreter defects accounted for most
-of it, and each was a *systemic* bug rather than a missing case:
+The gap was never thirty independent problems. Nearly every jump came from a single
+*systemic* interpreter defect — a duplicated source of truth, or one accessor in a family
+of six that had been left behind. Ten are recorded here:
 
 | Defect | Why it was systemic |
 |---|---|
 | `blockValue` unwrapped every `Signal` to its value | Every early `return` inside an `if` was silently a no-op. Any guard clause was dead. |
 | Element and field cells never wrote back | `xs[i] = v` through a `view` mutated nothing, so `quicksort` recursed forever. |
 | `deref` unwrapped one view level | A `view mut T` parameter handed a `view mut T` nested; every method call then dispatched `view_get`. |
-| Recursion ceiling of 512 | `go(2000)` — an ordinary tail-recursive loop — was rejected as too deep. |
+| Recursion ceiling of 512 | `go(2000)` — ordinary tail recursion — was rejected as too deep. |
 | Builtin variants absent from the variant table | `None`, `IoErr.Other` and `Handle::none` did not resolve. |
 | Iteration covered slices only | `for x in bytes` and over a `Map` were rejected. |
+| `Handle::none` registered as `handle_null` | The associated-constructor form rewrites `Owner::member` to `owner_member`; the name never matched. 74 occurrences of one missing symbol. |
+| Function-valued parameters not callable by name | `fn map_with(.., f: fn(u32) -> u32, ..)` could not call `f(..)`. A whole calling convention was missing. |
+| `slice.len` captured at construction | Every in-place mutator (`push`, `pop`, `insert`) left it stale, so the bounds check rejected indexes that were plainly in range. `E0193` fell from 67 to 3. |
+| `wantText` / `wantBytes` did not `deref` | The other four `want*` accessors did. Any `view Bytes` or `view Text` parameter was rejected by every method on it. |
 
-The first two are the kind of bug a passing unit suite misses and a corpus catches. Both
-produced *silently wrong answers* rather than errors.
+Three of these produced *silently wrong answers* rather than errors, and the full unit
+suite passed throughout. They were found only by running the corpus.
 
-The remaining failures are genuine but individual: `text + int` concatenation, an
-`is_null`-style method on a manually-managed handle pool, and a few wrong-value cases
-that each need their own diagnosis. The corpus is not yet a validation that MM runs real
-programs, and should not be cited as though it were.
+### 5.1 One bug that was not a bug
+
+`examples/quicksort.mm` hangs in a step-budget abort, and it is tempting to record that
+as an interpreter defect. It is not. Its Lomuto partition takes the pivot from the last
+element; when every element in the range is below the pivot it returns `store == hi`, and
+`quicksort_range` then recurses on the identical `(lo, hi)` range forever. The example is
+wrong. The interpreter's `swap` and its `view mut` write-through were verified correct in
+isolation — a two-index swap through a `view mut [T]`, generic and monomorphic, nested
+and repeated, all behave correctly.
+
+The cost of that check was high and the finding was worth it: a speculative `readThrough`
+cell hook was written, measured, found to change nothing observable, and removed. R-value
+reads of `xs[i]` go through `indexOf` straight to the backing array, so cells are only
+ever assignment targets and never go stale. The change is gone rather than left in as
+unverified machinery.
+
+### 5.2 What is still failing
+
+The remaining failures are individual and need their own diagnosis each. Some — notably
+`routing_intent`, which needs `Decision<T>` and the agent constructs — are missing
+capability rather than defects, and the honest outcome for those is to record them as
+unbuilt rather than weaken the ownership or effect system until they go green.
+
+The corpus is not yet a validation that MM runs real programs, and should not be cited as
+though it were.
 
 One robustness fix came out of this work and applies beyond the corpus: a native stack
 overflow is now caught and reported as a diagnostic. A runaway recursion cannot take the
@@ -160,24 +188,45 @@ process down, which is a property the interpreter needs regardless of what it is
    process, so the parser has both a per-loop progress guard and a global step budget that
    degrades to a diagnostic.
 
-4. **A passing unit suite is not a working system.** Two of the six interpreter defects
+4. **A passing unit suite is not a working system.** Three of the ten interpreter defects
    found via the corpus produced *silently wrong answers* rather than errors, and every
    test still passed. Running real programs is what surfaced them. The corpus is worth
    more than the tests beside it, and worth more still once it runs clean.
 
-5. **The corpus and its author disagreed about the language.** The example programs were
+5. **Look for the duplicated source of truth, not the missing case.** Every late jump in
+   the corpus came from one value existing in two places. `slice.len` mirrored
+   `elems.length` and drifted. `wantText` and `wantBytes` skipped the `deref` their four
+   sibling accessors performed. The same shape produced 67 index errors, 86 unresolved
+   calls, and 20 text failures — 173 of 256 errors in the corpus from three such defects.
+   When a whole family of functions disagrees, the outlier is the bug, and the fix is to
+   delete the second source of truth rather than to keep the two in step.
+
+6. **Verify a fix is load-bearing before keeping it.** A plausible `readThrough` cell hook
+   was added while diagnosing the quicksort hang. It typechecked, it was principled, and
+   it changed nothing observable, because r-value reads bypass cells entirely. It was
+   removed. A change that cannot be shown to fix anything is cost, not progress — and on
+   a system this size it accumulates.
+
+7. **The corpus and its author disagreed about the language.** The example programs were
    written against an API surface that did not exist (`Handle::at()`, `Map::new()`). The
    tests they shipped checked only that the files *parse* — real evidence for a narrow
    claim, and reported as such. Parsing clean is not running.
+
+8. **Not every failing program is a failing implementation.** `quicksort.mm` is a correct
+   interpreter failing an incorrect program (§5.1). The instinct on a red test is to
+   suspect the system under test; here that instinct would have produced a plausible
+   interpreter change that fixed nothing and broke the thing that was already right.
 
 ---
 
 ## 7. Next
 
-1. Finish the example corpus — 42 of 73, from 6. This is the difference between
+1. Build the agent-run harness and measure the success rate the report requires. Until
+   that exists, §3 is a measurement of context size and nothing more. The report is
+   explicit that a large context reduction paired with any drop in task success is not a
+   win, so the comparison cannot be called a result until both axes exist.
+2. Finish the example corpus — 48 of 73, from 6. This is the difference between
    "compiles" and "works", and it is the last thing standing between the language and a
    defensible claim that it runs real programs.
-2. Build the agent-run harness and measure the success rate the report requires. Until
-   then §3 is a measurement of context size, not a result about agent performance.
 3. `mmd` and the OMP extension are built and tested over a real pipe, but have not been
-   driven by an actual agent session yet.
+   driven by an actual agent session yet. The harness is what will do that.
