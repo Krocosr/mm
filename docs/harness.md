@@ -7,6 +7,16 @@ This document covers the machinery for the second half, and the findings that fe
 building it — several of which are about the experiment being invalid rather than about
 the language.
 
+> **Check for prior art before building anything here.** The generalised version of this
+> project's thesis — turn a codebase into a knowledge graph an agent queries instead of
+> reading files — is already shipped, free and battle-tested as
+> [Graphify](https://github.com/Graphify-Labs/graphify) (~122 000 stars, YC S26, ~40
+> languages). A ten-minute search before building the projection, the slice, the
+> optimiser, the extension and the harness would have shown it. See §10.10. More
+> generally: before solving a measurement or tooling problem from scratch, look for a
+> paper, a spec, or a repo that has already solved it. The expensive lesson here was not
+> technical, and it was avoidable for the price of a search.
+
 ## The question
 
 > "A 70 % context reduction that creates a 20 % success-rate reduction is not a win."
@@ -660,3 +670,71 @@ information the claim is about is not in the thing being measured.
 Everything in §10.5–§10.8 remains true and remains worth having. It is simply no longer
 the binding constraint: the experiment was well built, and it was pointed at a
 projection that does not carry the thing the claim is about.
+
+### 10.10 The prior art, found too late
+
+The question this project was built to answer — *can an agent be given a compact,
+queryable view of a codebase instead of reading files?* — already has an answer, and it
+is not ours. **[Graphify](https://github.com/Graphify-Labs/graphify)**: ~122 000 stars,
+Y Combinator S26, Apache 2.0, tree-sitter across ~40 languages, shipped as a `/graphify`
+skill for Claude Code, Cursor, Codex and Gemini CLI. "Map your codebase into a knowledge
+graph you query instead of grepping files" is its pitch, and it works.
+
+**The depth difference is real and is not enough.** Graphify is syntactic. MM's graph
+carries type resolution, ownership, effect rows and resource/secret risk, and MM rejects a
+program that double-frees, which Graphify structurally cannot do from an AST. That is a
+genuine capability gap in one direction.
+
+But the gap runs the wrong way for the thesis. What MM has that Graphify lacks is
+precisely the capability this project's own experiment showed agents do not use: 22
+`mm_*` calls across 16 runs, and `mm_check` called 5 times against `bash` 193 times *on a
+working compiler returning correct answers*. Agents did not use a checker that tells them
+their code is wrong. They were never going to reach for one that reports a type as
+`own`. A deeper semantic layer competes on the axis that measured as least wanted, while
+the shallower layer wins on distribution, breadth and a funded team.
+
+**They also solved, in their README, a problem this project spent a day rediscovering.**
+Every edge is tagged `EXTRACTED` (explicit in the source) or `INFERRED` (resolved by the
+tool). That is the provenance discipline §10.7 exists because this repository lacked it —
+an experiment that measured a compiler which reported errors on correct code, with
+nothing in the harness able to notice. It is in their documentation, in the first screen.
+
+**What this project should have done.** Before building the projection, the slice, the
+budget-trimming optimiser, the OMP extension and the 24-run harness, someone should have
+searched for "code knowledge graph agent tool", "AST graph RAG code", and the like. Ten
+minutes would have shown a 122 000-star, YC-funded, 40-language implementation of the
+exact thesis, and the project would have either adopted it or chosen a different target.
+The cost of that omission is not the day spent on the sensitivity measurement. It is
+every day spent making a body-carrying slice that would have competed with it.
+
+### 10.11 Closing verdict
+
+The project stops here, on evidence rather than on exhaustion.
+
+**What was built.** A systems language with a lexer, parser, formatter, HIR, type/effect/
+ownership checker, interpreter, semantic graph, CLI, daemon and OMP extension. 216 tests,
+a 29/29 safety corpus, a false-rejection audit, a 24-run agent harness, and a scorer.
+
+**What was learned, and generalises beyond this language.**
+
+1. A projection's cost tracks its symbol count, not the implementation it stands for
+   (§3.2). Any summary-based "context reduction" claim should be tested for that
+   sensitivity before the ratio is believed, because a bodyless projection is smaller for
+   the same reason a blank page is.
+2. A harness cannot detect that the system under test is wrong. That the compiler
+   rejected 198 correct call sites went unnoticed for the entire experiment is the most
+   transferable failure here, and it is invisible by construction — every number was real,
+   every run was graded, and the instrument was miscalibrated.
+3. Passing an arm is not evidence for it. The pre-fix 63 % vs 88 % gap was the
+   instrument's error, and it pointed the right way.
+4. Exogenous variance can swamp a between-condition effect without anyone noticing: a
+   15× within-cell spread against a 3 % median gap.
+5. **Check whether the problem is already solved** (§10.10). The most expensive lesson
+   was not technical, and it was avoidable for the price of a search.
+
+**Why the negative result is the deliverable.** The claim was not "this projection is
+compact" — that is true and uninteresting. It was "an agent needs materially less
+context and completes no fewer tasks". That claim is false as posed, for a reason that is
+deterministic and now asserted by a test. Knowing *why* it is false, and that it was
+false for a structural reason rather than a statistical one, is worth more than a
+weaker positive would have been.
