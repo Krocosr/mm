@@ -1,0 +1,494 @@
+{
+  "generated_at": "2026-09-29T19:27:39.338Z",
+  "conditions_provenance": {
+    "omp_version": "18.4.3",
+    "tool_names_source": "the `TOOLS` array in omp-extension/mm.ts, in source order",
+    "tool_names": [
+      "mm_check",
+      "mm_symbol",
+      "mm_refs",
+      "mm_type",
+      "mm_slice",
+      "mm_packet",
+      "mm_system",
+      "mm_verify"
+    ],
+    "measured_tools_flag_behaviour": {
+      "note": "Run directly on the installed omp; this CONTRADICTS omp://custom-tools.md, which states --tools validates only built-in names. The observed behaviour is what these results depend on.",
+      "registered_and_named": "works; tool callable",
+      "registered_not_named": "works; extension tools are force-included",
+      "named_but_not_registered": "hard startup error, 'Unknown tool in --tools', listing the registered tools. This is why the semantic condition names its mm_* tools: it turns an extension that failed to load into a loud failure instead of a silent downgrade to the baseline."
+    },
+    "semantic_extension": ".harness/loader/mm-ext.ts — omp-extension/mm.ts has no default export, so `-e` on the library itself finds no factory and the tools silently do not exist. The loader lives outside every run work/ dir so the agent cannot edit the tool it is measured on."
+  },
+  "results": [
+    {
+      "task": "bitfield",
+      "condition": "baseline",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 6150,
+      "output_tokens": 1433,
+      "tool_calls": 6,
+      "tool_calls_by_name": {
+        "read": 1,
+        "bash": 4,
+        "edit": 1
+      },
+      "mm_tool_calls": 0,
+      "seconds": 35.09,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 5,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "bitfield_test.mm"
+      ]
+    },
+    {
+      "task": "bitfield",
+      "condition": "baseline",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 1911,
+      "output_tokens": 2679,
+      "tool_calls": 9,
+      "tool_calls_by_name": {
+        "read": 1,
+        "bash": 6,
+        "write": 1,
+        "edit": 1
+      },
+      "mm_tool_calls": 0,
+      "seconds": 51.82,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 5,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "bitfield_test.mm"
+      ]
+    },
+    {
+      "task": "bitfield",
+      "condition": "semantic",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 7030,
+      "output_tokens": 4481,
+      "tool_calls": 15,
+      "tool_calls_by_name": {
+        "read": 2,
+        "bash": 7,
+        "mm_check": 1,
+        "mm_packet": 1,
+        "mm_refs": 1,
+        "edit": 3
+      },
+      "mm_tool_calls": 3,
+      "seconds": 65.74,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 5,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "bitfield_test.mm"
+      ]
+    },
+    {
+      "task": "bitfield",
+      "condition": "semantic",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 4581,
+      "output_tokens": 3424,
+      "tool_calls": 20,
+      "tool_calls_by_name": {
+        "bash": 11,
+        "read": 2,
+        "mm_check": 1,
+        "write": 1,
+        "edit": 5
+      },
+      "mm_tool_calls": 1,
+      "seconds": 68.56,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 5,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "bitfield_test.mm"
+      ]
+    },
+    {
+      "task": "checkdigit",
+      "condition": "baseline",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 6638,
+      "output_tokens": 4846,
+      "tool_calls": 15,
+      "tool_calls_by_name": {
+        "read": 1,
+        "bash": 8,
+        "grep": 1,
+        "edit": 5
+      },
+      "mm_tool_calls": 0,
+      "seconds": 79.52,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "checkdigit_test.mm"
+      ]
+    },
+    {
+      "task": "checkdigit",
+      "condition": "baseline",
+      "repeat": 2,
+      "passed": false,
+      "input_tokens": 24789,
+      "output_tokens": 28959,
+      "tool_calls": 66,
+      "tool_calls_by_name": {
+        "read": 3,
+        "bash": 48,
+        "grep": 4,
+        "edit": 6,
+        "write": 5
+      },
+      "mm_tool_calls": 0,
+      "seconds": 425.03,
+      "status": "timeout",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 0,
+      "tests_failed": 0,
+      "hidden_tests": [],
+      "failure_kind": "run_did_not_finish",
+      "failure_reason": "run did not finish (timeout)"
+    },
+    {
+      "task": "checkdigit",
+      "condition": "semantic",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 9667,
+      "output_tokens": 18836,
+      "tool_calls": 24,
+      "tool_calls_by_name": {
+        "bash": 16,
+        "read": 3,
+        "mm_check": 1,
+        "edit": 2,
+        "write": 2
+      },
+      "mm_tool_calls": 1,
+      "seconds": 274.92,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "checkdigit_test.mm"
+      ]
+    },
+    {
+      "task": "checkdigit",
+      "condition": "semantic",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 9040,
+      "output_tokens": 9569,
+      "tool_calls": 40,
+      "tool_calls_by_name": {
+        "read": 8,
+        "bash": 23,
+        "mm_check": 1,
+        "edit": 8
+      },
+      "mm_tool_calls": 1,
+      "seconds": 192.06,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "checkdigit_test.mm"
+      ]
+    },
+    {
+      "task": "slot_pool",
+      "condition": "baseline",
+      "repeat": 1,
+      "passed": false,
+      "input_tokens": 26536,
+      "output_tokens": 18254,
+      "tool_calls": 60,
+      "tool_calls_by_name": {
+        "read": 14,
+        "bash": 31,
+        "grep": 3,
+        "write": 1,
+        "edit": 11
+      },
+      "mm_tool_calls": 0,
+      "seconds": 332.34,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 6,
+      "tests_failed": 6,
+      "hidden_tests": [
+        "slot_pool_test.mm"
+      ],
+      "failure_kind": "hidden_tests_failed",
+      "failure_reason": "6 of 6 hidden tests failed: hidden::slot_pool_test::a released handle is retired immediately"
+    },
+    {
+      "task": "slot_pool",
+      "condition": "baseline",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 19365,
+      "output_tokens": 9938,
+      "tool_calls": 35,
+      "tool_calls_by_name": {
+        "read": 5,
+        "bash": 22,
+        "grep": 2,
+        "write": 1,
+        "edit": 5
+      },
+      "mm_tool_calls": 0,
+      "seconds": 164.42,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "slot_pool_test.mm"
+      ]
+    },
+    {
+      "task": "slot_pool",
+      "condition": "semantic",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 19264,
+      "output_tokens": 12101,
+      "tool_calls": 30,
+      "tool_calls_by_name": {
+        "read": 7,
+        "bash": 20,
+        "mm_check": 1,
+        "write": 2
+      },
+      "mm_tool_calls": 1,
+      "seconds": 129.32,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "slot_pool_test.mm"
+      ]
+    },
+    {
+      "task": "slot_pool",
+      "condition": "semantic",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 14830,
+      "output_tokens": 10481,
+      "tool_calls": 18,
+      "tool_calls_by_name": {
+        "read": 4,
+        "mm_check": 2,
+        "bash": 6,
+        "mm_symbol": 1,
+        "mm_packet": 1,
+        "edit": 3,
+        "write": 1
+      },
+      "mm_tool_calls": 4,
+      "seconds": 102.15,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "slot_pool_test.mm"
+      ]
+    },
+    {
+      "task": "tally",
+      "condition": "baseline",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 7276,
+      "output_tokens": 9418,
+      "tool_calls": 25,
+      "tool_calls_by_name": {
+        "bash": 12,
+        "read": 4,
+        "edit": 6,
+        "write": 3
+      },
+      "mm_tool_calls": 0,
+      "seconds": 180.03,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "tally_test.mm"
+      ]
+    },
+    {
+      "task": "tally",
+      "condition": "baseline",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 2711,
+      "output_tokens": 3410,
+      "tool_calls": 12,
+      "tool_calls_by_name": {
+        "bash": 6,
+        "grep": 1,
+        "read": 2,
+        "edit": 2,
+        "write": 1
+      },
+      "mm_tool_calls": 0,
+      "seconds": 57.19,
+      "status": "ok",
+      "tools": "read,grep,bash,edit,write",
+      "extension": null,
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "tally_test.mm"
+      ]
+    },
+    {
+      "task": "tally",
+      "condition": "semantic",
+      "repeat": 1,
+      "passed": true,
+      "input_tokens": 6300,
+      "output_tokens": 9569,
+      "tool_calls": 32,
+      "tool_calls_by_name": {
+        "read": 3,
+        "bash": 18,
+        "mm_symbol": 1,
+        "mm_slice": 1,
+        "edit": 6,
+        "mm_check": 2,
+        "mm_verify": 1
+      },
+      "mm_tool_calls": 5,
+      "seconds": 116.31,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "tally_test.mm"
+      ]
+    },
+    {
+      "task": "tally",
+      "condition": "semantic",
+      "repeat": 2,
+      "passed": true,
+      "input_tokens": 12723,
+      "output_tokens": 8461,
+      "tool_calls": 22,
+      "tool_calls_by_name": {
+        "bash": 9,
+        "read": 4,
+        "mm_check": 1,
+        "edit": 7,
+        "write": 1
+      },
+      "mm_tool_calls": 1,
+      "seconds": 218.67,
+      "status": "ok",
+      "tools": "read,bash,edit,write,mm_check,mm_symbol,mm_refs,mm_type,mm_slice,mm_packet,mm_system,mm_verify",
+      "extension": "A:/dev/mm/.harness/loader/mm-ext.ts",
+      "tests_total": 6,
+      "tests_failed": 0,
+      "hidden_tests": [
+        "tally_test.mm"
+      ]
+    }
+  ],
+  "by_condition": [
+    {
+      "condition": "baseline",
+      "runs": 8,
+      "finished": 8,
+      "passed": 6,
+      "pass_rate": 0.75,
+      "mean_input_tokens": 11922,
+      "mean_output_tokens": 9867.13,
+      "mean_tool_calls": 28.5,
+      "mean_seconds": 165.68,
+      "min_input_tokens": 1911,
+      "max_input_tokens": 26536,
+      "input_tokens_each": [
+        1911,
+        2711,
+        6150,
+        6638,
+        7276,
+        19365,
+        24789,
+        26536
+      ]
+    },
+    {
+      "condition": "semantic",
+      "runs": 8,
+      "finished": 8,
+      "passed": 8,
+      "pass_rate": 1,
+      "mean_input_tokens": 10429.38,
+      "mean_output_tokens": 9615.25,
+      "mean_tool_calls": 25.13,
+      "mean_seconds": 145.97,
+      "min_input_tokens": 4581,
+      "max_input_tokens": 19264,
+      "input_tokens_each": [
+        4581,
+        6300,
+        7030,
+        9040,
+        9667,
+        12723,
+        14830,
+        19264
+      ]
+    }
+  ],
+  "mm_tool_calls_by_condition": {
+    "baseline": 0,
+    "semantic": 17
+  }
+}

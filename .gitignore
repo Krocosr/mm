@@ -20,3 +20,6 @@ scratch/
 # The sweep taken before the compiler stopped refusing correct code. Kept so the
 # before/after comparison is exact; the numbers are in docs/harness.md.
 .harness-runs-precompilerfix/
+
+# Kept instead of the run trees: these are the three sweeps' scored summaries, 60 KB
+# against 46 MB of regenerable per-run working copies. docs/harness.md quotes them.
