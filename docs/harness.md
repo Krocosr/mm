@@ -529,7 +529,7 @@ new language.
 
 ### 10.7 A caveat on every number above
 
-The sweep in this section was taken against a compiler that **refused correct code**,
+The sweep in §10.1-§10.5 was taken against a compiler that **refused correct code**,
 and that was not known when the runs happened. Two defects, both systematic:
 
 - `test` bodies were not type-checked at all. Every `assert_eq` in the fixtures lives in
@@ -589,3 +589,74 @@ bun score.ts --runs-dir runs --tasks-dir tasks
 `runner.ts` is resumable: a run whose `run.json` exists is skipped, so an interrupted
 sweep continues where it stopped. Results land in `runs/results.json` and
 `runs/summary.json`.
+
+### 10.8 The re-run, against a compiler that stopped rejecting correct code
+
+The sweep above was taken against a compiler that reported errors on correct code
+(§10.7). It was re-run in full against the fixed one, 24 runs, same harness, same
+fixtures, same model.
+
+| condition | pass before | pass after | median tokens after | range after | `mm_*` calls |
+|---|---:|---:|---:|---:|---:|
+| baseline | 63 % | **100 %** | 7 777 | 2 130 – 32 037 | 0 |
+| semantic | 88 % | 88 %* | 7 520 | 1 234 – 36 992 | 8 |
+| semantic_grep | 100 % | 100 % | 9 730 | 2 826 – 26 247 | 14 |
+
+\* the one semantic failure is a **crashed** run — 36 992 input tokens, the most expensive
+run in either sweep, producing no answer. It is not a wrong answer.
+
+Three results, and the first is the important one.
+
+**The pre-fix pass-rate gap was an artifact.** Baseline went 63 % → 100 % once the
+compiler stopped rejecting correct code. The 63 % was the false rejections biting the
+text-tool arm, and the 88 % vs 63 % "semantic advantage" was that artifact, not a
+capability difference. Scoring the first sweep on pass rate and stopping there would
+have reported an advantage that does not exist. This is the clearest single vindication
+of fixing the compiler before drawing any conclusion from it.
+
+**Token cost is indistinguishable.** The median gap between semantic and baseline is 3 %,
+against a within-cell spread of **15.0×** — which got *worse* with the fix, from 6.2×.
+Nothing here separates the conditions, and the re-run neither supports nor refutes a
+saving.
+
+**Tool usage stayed negligible.** 22 `mm_*` calls across 16 semantic runs, against
+20–30 tool calls per run. Zero in baseline, as it must be. Consistent with §8.1.
+
+**A provenance caveat on this sweep specifically.** The `omp update` to 18.4.4 landed
+while it was running, so runs 1–17 executed on 18.4.3 and the remainder on 18.4.4. The
+split is recorded rather than smoothed over. The extension was separately confirmed
+loading and answering correctly on 18.4.4 (§8.1), and a version difference is a far
+smaller threat than the compiler difference this sweep was designed to remove.
+
+**What this changes about the verdict.** Nothing structural, and §10.5 stands — but one
+of its three blockers is now retired rather than merely stated. The treatment is still
+inert (22 calls, zero `mm_slice`); the noise still swamps the effect; the confound with
+the language is untouched. What is gone is the possibility that the pass-rate axis was
+carrying signal, because it is now saturated: all three arms solve every task.
+
+That is worth stating plainly, because it removes the last place a result could have
+hidden. With every condition at 100 %, the only remaining quantity is tokens, and tokens
+are noise. The experiment is not merely underpowered — on this task set it has no
+measurable outcome left to be underpowered about.
+
+And per §3.2, the token quantity it would have measured is not the report's claim in any
+case: a projection that carries no statements cannot stand in for source, whatever the
+agent spends on it.
+
+### 10.9 The finding that supersedes all of it
+
+The sweep was designed to measure whether agents use a cheap projection instead of source.
+Measuring it exposed something more basic, in `checkpoint-1.md` §3.2: the projection
+contains no statements, and its cost is entirely independent of how much implementation
+the code holds. Padding every function body grew the source 102–176 % and the slice
+**0.0 %**.
+
+That is not a property of the harness, the model, the prompts or the tools. It is a
+property of the artifact, it is deterministic, and it is asserted by
+`tests/projection-sensitivity.test.ts`. No repetition of this experiment, in any
+language, with any amount of tool polish, can measure the report's claim — because the
+information the claim is about is not in the thing being measured.
+
+Everything in §10.5–§10.8 remains true and remains worth having. It is simply no longer
+the binding constraint: the experiment was well built, and it was pointed at a
+projection that does not carry the thing the claim is about.
