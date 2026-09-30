@@ -238,6 +238,48 @@ calls per run out of 12–32 tool calls. If the fast build does not move that nu
 latency was not the binding constraint and the tool descriptions become the next thing
 to examine.
 
+### 8.1 Confirmed on a working compiler and a new binary: the tools are still not called
+
+§8 ended with a falsifiable prediction — *if a fast `mm_slice` does not increase
+`mm_tool_calls`, latency was not the binding constraint*. It was tested, and the
+prediction came back negative.
+
+One `tally`/`semantic` run on `omp` **18.4.4**, against the compiler that no longer
+rejects correct code, with the extension loading cleanly. Tool references in the event
+log:
+
+| tool | references in log |
+|---|---:|
+| `bash` | 193 |
+| `edit` | 101 |
+| `read` | 30 |
+| `write` | 6 |
+| **`mm_check`** | **5** |
+
+And the `mm_check` calls were not errors — one returned `[]` with `isError: false`, which
+is the correct answer for that file. The tool works, it is fast, it returns the right
+thing, and the agent reached for `bash` instead.
+
+The log holds several entries per tool call, so the per-tool split above is not a clean
+count of invocations; the run's own summary reports 39 tool calls in total. The ordering
+is not in doubt even if the exact ratio is.
+
+**This is the same finding as §1 and §7/§8, now with every confound it had removed.** The
+first sweep's low tool usage had three live explanations: the extension never loaded
+(§1), the compiler lied to agents using `mm_check` (§10.7), and `mm_slice` was too slow
+(§7). The first is fixed and verified here by `mm_check` appearing in the log at all;
+the second is fixed and verified by the same call returning a correct empty result; the
+third is fixed and verified by §8's 50.6 ms. A new binary removes "old version" as well.
+
+The prediction is therefore answered: **latency was not the binding constraint.** The
+agent was told to prefer these tools, in a working schema, against a correct compiler,
+at 50 ms — and still used `bash` roughly forty times more. Whatever decides tool choice
+here is not a defect in the tools.
+
+This is also the practical shape of the whole result: an unused tool is an experiment
+that measures nothing while looking perfectly healthy. A harness that only counted
+tokens would have reported this run as a fine semantic-condition result.
+
 ## 9. The experiment as run confounds three things
 
 The first sweep compared text tools against semantic tools, on MM, on tasks written in
