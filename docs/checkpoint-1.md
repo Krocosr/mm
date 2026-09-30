@@ -406,7 +406,7 @@ all, and they were worth more:
 | `Bytes` and `Text` indexing rejected, though `indexOf` has always accepted both | 28 | The message said `builtin#-12 cannot be indexed` — a builtin id, not a type name, so it did not look like a rule about a type anyone had heard of. |
 | Both variant resolvers guarded on `t.form !== "choice"`, but `TypeDef` never produces `"choice"` — it is `"union"` | 20 | `checkEnumVariantValue` was dead code. Its comment described the qualified `Ident.variant` form, so it read as a deliberate narrow rule rather than a guard that never matched. |
 
-**`check examples`: 178 → 78 errors.** The suite is 210 passing, 0 failing, and the
+**`check examples`: 178 → 76 errors.** The suite is 210 passing, 0 failing, and the
 example corpus is unchanged at 59/75 — which is the point. Every one of these was a
 *false rejection*: the interpreter ran the program. The corpus pass count did not move
 because the corpus measures the interpreter, and none of these bugs were in it.
@@ -417,7 +417,7 @@ for running both continuously: a suite that only exercised the interpreter would
 have noticed that the *compiler* was refusing correct code 178 times.
 
 
-**`check examples`: 178 → 78 errors.** The suite is 210 passing, 0 failing, and the
+**`check examples`: 178 → 76 errors.** The suite is 210 passing, 0 failing, and the
 example corpus is unchanged at 59/75.
 
 **The static guarantees were re-verified after every step.** Loosening a checker is
@@ -426,12 +426,40 @@ after each: 29 passing, 118 assertions, every program still rejected at its name
 `mm verify` still `ok: true`, 212 tests 0 failing. Fewer errors, same guarantees — every
 error that went was one the runtime disagreed with.
 
-What remains of the 78 is a different kind of work, and that is the point: the largest
+What remains of the 76 is a different kind of work, and that is the point: the largest
 single cluster is 2. The array-versus-slice distinction, which the type system drew and
 the runtime did not, is resolved. What is left is scattered, and much of it is
 legitimately an error — a function whose tail does not match its declared return, an
 empty array whose element type cannot be inferred, a `?` propagating into a `Result` that
 is not there.
+
+### 11.3 The largest remaining cluster: aliases do not expand
+
+`examples/graph_traverse.mm` accounts for 14 of the 76, and all 14 are one cause:
+
+```text
+type Graph = Map<u32, [u32]>
+
+fn bfs(g: view Graph, ...) {
+    let neighbours = g.get(node);   // no method `get` on `type#0`
+    while i < neighbours.len() {   // no method `len` on `<error>`
+```
+
+`Graph` is an alias for a builtin. The alias does not expand, so the receiver reaches
+`methodType` as `named` carrying the *alias's own* definition id — `type#0` — rather than
+the `Map` it denotes. Every map method is therefore invisible, and the `<error>` that
+follows is cascade, not a second bug.
+
+An alias has to be transparent for method resolution, or a program is punished for
+naming its type. This is queued rather than landed because the agent sweep is in flight
+and the checker is the thing under test; changing it mid-sweep would mean later runs used
+a different compiler than earlier ones, which is the confound this project has already
+paid for once.
+
+The other clusters are smaller and mostly genuine: a function whose tail does not match
+its declared return, an integer assigned to a narrower slot without a cast, a `?`
+propagating into a `Result` that is not there. The distinction worth keeping is that
+"largest cluster" stopped meaning "systematic defect" somewhere around the fourth fix.
 
 ### 11.2 The one false rejection left in this family
 
