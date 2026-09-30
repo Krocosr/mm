@@ -120,6 +120,52 @@ So a slice carries about one-sixth the text of the source it stands in for. That
 better than the packet's 0.285, and it is the number that matters for a live agent:
 the slice is sized by the goal rather than by the module.
 
+### 3.2 What that ratio does not measure
+
+The ratio above is real, reproducible, and **not a compression factor** — and those two
+facts have to be read together or the number misleads.
+
+A ratio of slice-tokens to source-tokens is a compression factor only if the projection
+carries the source's information. It does not. A slice renders signatures, call edges,
+field types, local variables with their ownership, effects and test names. It renders
+**no statements**. So the information an agent needs in order to change what a function
+*does* is exactly the information the projection does not carry.
+
+That is measurable without any model, and the measurement is blunt. Pad every function
+body in a fixture with executable statements and re-render
+(`bun run scripts/measure-slice-sensitivity.ts`):
+
+| fixture | source growth | slice growth |
+|---|---:|---:|
+| bitfield | +176.0 % | **0.0 %** |
+| slot_pool | +101.9 % | **0.0 %** |
+| tally | +124.6 % | **0.0 %** |
+| checkdigit | +108.5 % | **0.0 %** |
+
+The body more than doubled. The slice did not move by one token. A slice's cost is a
+function of **how many symbols exist**, and is entirely independent of **how much
+implementation those symbols contain**.
+
+Two consequences, and the second is the one that matters:
+
+1. The 0.166-0.229 ratio is set by the host language's coding style, not by how much
+   information reaches the agent. The same projection scores better or worse on
+   terse code than on verbose code, with the underlying information transfer unchanged.
+2. **No experiment can rescue it.** A perfect harness, forced tool use and zero variance
+   would all still measure a projection that cannot show an agent what a function does.
+   The number describes the projection's shape; it does not stand in for the source.
+
+The padding is executable code declaring no new names, and that detail is load-bearing:
+`let padN = 1` would add a *local*, locals are in the projection, and the slice would
+grow for a reason having nothing to do with statements. Padding that way measures symbol
+count, and reports the opposite conclusion. `tests/projection-sensitivity.test.ts` asserts
+the zero-growth property so the ratio cannot be quoted without this caveat.
+
+This is not a reason to delete the projection. Signatures, call edges, ownership and
+effects at a sixth of the source is a genuinely useful *navigation* artifact — that is
+what `mm_symbol` and `mm_refs` are for, and both are sub-millisecond. What it is not is
+a substitute for reading the code, and the report's framing needs to say so.
+
 **This is a static measurement and it is not the experiment.** It says the projection is
 compact, not that an agent using it completes tasks. The first agent sweep found the
 opposite of what this number suggests — see `harness.md` §7: `mm_slice` took eleven
