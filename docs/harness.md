@@ -485,6 +485,27 @@ In rough order of leverage:
 The cheapest next measurement is (4), followed by (1). Neither requires new tasks or a
 new language.
 
+### 10.7 A caveat on every number above
+
+The sweep in this section was taken against a compiler that **refused correct code**,
+and that was not known when the runs happened. Two defects, both systematic:
+
+- `test` bodies were not type-checked at all. Every `assert_eq` in the fixtures lives in
+  one, so the compiler's answers about the parts of a program an agent actually reasons
+  about were never exercised by the corpus.
+- A `view` parameter was not satisfied by naming a place, though the interpreter has
+  always lent the place. 198 call sites were rejected that the interpreter runs.
+
+So the semantic condition had a working `mm_check` that lied to it, and the agents were
+reasoning about a compiler that disagreed with the interpreter on the language's central
+ownership feature. Those runs are preserved in `.harness-runs-precompilerfix/` and the
+sweep has been re-run against the fixed compiler.
+
+This is the same lesson as the rest of this document, arriving from a new direction: the
+measurements were real, the instrumentation was faithful, and the thing being measured
+was broken in a way nobody had checked. **A harness cannot tell you the compiler is
+wrong; only running the compiler against something else can.**
+
 ---
 
 ## Honest limits

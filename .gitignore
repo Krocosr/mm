@@ -16,3 +16,7 @@ scratch/
 # The first (slow-build) sweep, preserved as the floor the mm_slice fix improved on.
 # 12 MB of per-run work trees; regenerable, and its summary is what matters.
 .harness-runs-slowbuild/
+
+# The sweep taken before the compiler stopped refusing correct code. Kept so the
+# before/after comparison is exact; the numbers are in docs/harness.md.
+.harness-runs-precompilerfix/
