@@ -171,7 +171,18 @@ export class BodyChecker {
     const c = this.c;
     switch (stmt.kind) {
       case "let": {
-        const initTy = stmt.init ? this.checkExpr(stmt.init, stmt.ty ? undefined : undefined) : TY_ERR;
+        // An associated constructor's result cannot be derived from its arguments —
+        // `Handle::at(i, g)` names a slot and produces a handle to whatever the caller
+        // expects — so an unannotated `let` around one has nothing to infer from. The
+        // block's expected type is the only context available, and it is threaded in for
+        // *that form only*.
+        //
+        // Narrow on purpose. Passing the expected type to every unannotated `let` also
+        // steers integer literals: in a function returning `u32`, `let mut i = 0` became
+        // `u32` and stopped matching the `usize` it was compared against. The corpus
+        // improved and a fixture broke, which is exactly the trade this avoids.
+        const ctorCtx = isAssociatedConstructor(stmt.init) ? expected : undefined;
+        const initTy = stmt.init ? this.checkExpr(stmt.init, stmt.ty ? undefined : ctorCtx) : TY_ERR;
         if (stmt.ty) {
           const declared = resolveTypeExpr(c, stmt.ty, this.currentGenerics(), c.moduleFor(stmt.span), stmt.span);
           if (stmt.init) {
@@ -876,10 +887,10 @@ export class BodyChecker {
     });
     this.facts.calls.set(factKey(span), { callee: anyBuiltinFnId(def.name), span, argTys });
     // A constructor's result type is not derivable from its arguments — `Handle::at(i, g)`
-    // names a slot, and what it produces is a handle to whatever the *caller* expects.
-    // When the context is a borrow-shaped type, it is the better seed: binding `T` to the
-    // first argument instead would make `Handle::at` return its own `usize` index.
-    const context = expected && isViewParam(expected) ? deepResolve(deepUnown(expected)) : null;
+    // names a slot, and what it produces is a handle to whatever the caller expects. Any
+    // ownership discipline in the context is a better seed than the first argument:
+    // binding `T` to the argument instead makes `Handle::at` return its own index.
+    const context = expected && expected.k === "own" ? deepResolve(deepUnown(expected)) : null;
     return resolveMiniType(def.ret, [context ?? seed]);
   }
 
@@ -1580,4 +1591,15 @@ function typeMatchesNominal(c: Checker, base: Ty, typeName: string): boolean {
  */
 function isViewParam(t: Ty): t is Extract<Ty, { k: "own" }> {
   return t.k === "own" && (t.ownership === "view" || t.ownership === "viewmut");
+}
+
+/**
+ * True for an initialiser that is a qualified associated-constructor call, `Owner::member`.
+ *
+ * This is the one call form whose result type cannot be derived from its arguments, so it
+ * is the only one given the enclosing block's expected type as a hint. The qualified name
+ * is the syntactic signal, and it is the same one `evalCall` uses to route the call.
+ */
+function isAssociatedConstructor(e: Expr | undefined): boolean {
+  return e !== undefined && e.kind === "call" && e.callee.kind === "path" && e.callee.value.includes("::");
 }
